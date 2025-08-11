@@ -43,6 +43,7 @@ use helix_core::{
     ChangeSet, Diagnostic, LineEnding, Range, Rope, RopeBuilder, Selection, Syntax, Transaction,
 };
 
+use crate::icons::{Icons, ICONS};
 use crate::{
     editor::Config,
     events::{DocumentDidChange, SelectionDidChange},
@@ -1896,6 +1897,12 @@ impl Document {
         self.version
     }
 
+    pub fn word_completion_enabled(&self) -> bool {
+        self.language_config()
+            .and_then(|lang_config| lang_config.word_completion.and_then(|c| c.enable))
+            .unwrap_or_else(|| self.config.load().word_completion.enable)
+    }
+
     pub fn path_completion_enabled(&self) -> bool {
         self.language_config()
             .and_then(|lang_config| lang_config.path_completion)
@@ -2323,8 +2330,10 @@ impl Document {
             .unwrap_or(40);
         let wrap_indicator = language_soft_wrap
             .and_then(|soft_wrap| soft_wrap.wrap_indicator.clone())
-            .or_else(|| config.soft_wrap.wrap_indicator.clone())
-            .unwrap_or_else(|| "↪ ".into());
+            .unwrap_or_else(|| {
+                let icons: arc_swap::access::DynGuard<Icons> = ICONS.load();
+                icons.ui().r#virtual().wrap().to_string()
+            });
         let tab_width = self.tab_width() as u16;
         TextFormat {
             soft_wrap: enable_soft_wrap && viewport_width > 10,

@@ -312,6 +312,9 @@ pub struct Config {
     /// either absolute or relative to the current opened document or current working directory (if the buffer is not yet saved).
     /// Defaults to true.
     pub path_completion: bool,
+    /// Configures completion of words from open buffers.
+    /// Defaults to enabled with a trigger length of 7.
+    pub word_completion: WordCompletion,
     /// Automatic formatting on save. Defaults to true.
     pub auto_format: bool,
     /// Default register used for yank/paste. Defaults to '"'
@@ -541,7 +544,6 @@ pub struct StatusLineConfig {
     pub left: Vec<StatusLineElement>,
     pub center: Vec<StatusLineElement>,
     pub right: Vec<StatusLineElement>,
-    pub separator: String,
     pub mode: ModeConfig,
     pub diagnostics: Vec<Severity>,
     pub workspace_diagnostics: Vec<Severity>,
@@ -567,7 +569,6 @@ impl Default for StatusLineConfig {
                 E::Position,
                 E::FileEncoding,
             ],
-            separator: String::from("│"),
             mode: ModeConfig::default(),
             diagnostics: vec![Severity::Warning, Severity::Error],
             workspace_diagnostics: vec![Severity::Warning, Severity::Error],
@@ -786,14 +787,12 @@ impl std::str::FromStr for GutterType {
 #[serde(default)]
 pub struct WhitespaceConfig {
     pub render: WhitespaceRender,
-    pub characters: WhitespaceCharacters,
 }
 
 impl Default for WhitespaceConfig {
     fn default() -> Self {
         Self {
             render: WhitespaceRender::Basic(WhitespaceRenderValue::None),
-            characters: WhitespaceCharacters::default(),
         }
     }
 }
@@ -920,30 +919,6 @@ where
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct WhitespaceCharacters {
-    pub space: char,
-    pub nbsp: char,
-    pub nnbsp: char,
-    pub tab: char,
-    pub tabpad: char,
-    pub newline: char,
-}
-
-impl Default for WhitespaceCharacters {
-    fn default() -> Self {
-        Self {
-            space: '·',   // U+00B7
-            nbsp: '⍽',    // U+237D
-            nnbsp: '␣',   // U+2423
-            tab: '→',     // U+2192
-            newline: '⏎', // U+23CE
-            tabpad: ' ',
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct IndentGuidesConfig {
     pub render: bool,
@@ -1010,6 +985,22 @@ pub enum PopupBorderConfig {
     Menu,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
+pub struct WordCompletion {
+    pub enable: bool,
+    pub trigger_length: NonZeroU8,
+}
+
+impl Default for WordCompletion {
+    fn default() -> Self {
+        Self {
+            enable: true,
+            trigger_length: NonZeroU8::new(7).unwrap(),
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -1029,6 +1020,7 @@ impl Default for Config {
             auto_pairs: AutoPairConfig::default(),
             auto_completion: true,
             path_completion: true,
+            word_completion: WordCompletion::default(),
             auto_format: true,
             default_yank_register: '"',
             auto_save: AutoSave::default(),
