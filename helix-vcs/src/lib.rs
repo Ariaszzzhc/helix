@@ -11,6 +11,7 @@ use std::{
 
 #[cfg(feature = "git")]
 mod git;
+pub use git::blame::FileBlame;
 
 mod diff;
 
@@ -20,8 +21,6 @@ mod status;
 
 pub use status::FileChange;
 
-/// Contains all active diff providers. Diff providers are compiled in via features. Currently
-/// only `git` is supported.
 #[derive(Clone)]
 pub struct DiffProviderRegistry {
     providers: Vec<DiffProvider>,
@@ -95,7 +94,7 @@ impl Default for DiffProviderRegistry {
 ///
 /// `Copy` is simply to ensure the `clone()` call is the simplest it can be.
 #[derive(Copy, Clone)]
-enum DiffProvider {
+pub enum DiffProvider {
     #[cfg(feature = "git")]
     Git,
     None,
