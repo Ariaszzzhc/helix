@@ -151,12 +151,12 @@ impl menu::Item for CompletionItem {
         let is_folder = kind.0[0].content == "folder";
 
         if let Some(icon) = icons.kind().get(name) {
-            kind.0[0].content = format!("{icon} {name}").into();
+            kind.0[0].content = format!("{icon}").into();
 
-            if let Some(style) = icon.color().map(|color| Style::default().fg(color)) {
-                kind.0[0].style = style;
-            } else if is_folder {
-                kind.0[0].style = dir_style;
+            if is_folder {
+                kind.0[0].style = dir_style
+            } else {
+                kind.0[0].style = theme.try_get("special").unwrap_or(Style::default());
             }
         } else {
             kind.0[0].content = format!("{name}").into();
