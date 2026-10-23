@@ -3904,7 +3904,7 @@ pub const TYPABLE_COMMAND_LIST: &[TypableCommand] = &[
     TypableCommand {
         name: "config-open",
         aliases: &[],
-        doc: "Open the user config.toml file.",
+        doc: "Open the user configuration file.",
         fun: open_config,
         completer: CommandCompleter::none(),
         signature: Signature {
@@ -3915,7 +3915,7 @@ pub const TYPABLE_COMMAND_LIST: &[TypableCommand] = &[
     TypableCommand {
         name: "config-open-workspace",
         aliases: &[],
-        doc: "Open the workspace config.toml file.",
+        doc: "Open the workspace configuration file.",
         fun: open_workspace_config,
         completer: CommandCompleter::none(),
         signature: Signature {

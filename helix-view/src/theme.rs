@@ -145,7 +145,7 @@ impl Loader {
     fn load_theme(&self, name: &str, visited_paths: &mut HashSet<PathBuf>) -> Result<Value> {
         let path = self.path(name, visited_paths)?;
 
-        let theme_toml = self.load_toml(path)?;
+        let theme_toml = self.load_file(&path)?;
 
         let inherits = theme_toml.get("inherits");
 
@@ -170,18 +170,25 @@ impl Loader {
     }
 
     pub fn read_names(path: &Path) -> Vec<String> {
-        std::fs::read_dir(path)
+        let mut names: Vec<_> = std::fs::read_dir(path)
             .map(|entries| {
                 entries
                     .filter_map(|entry| {
                         let entry = entry.ok()?;
                         let path = entry.path();
-                        (path.extension()? == "toml")
-                            .then(|| path.file_stem().unwrap().to_string_lossy().into_owned())
+                        if !path.is_file()
+                            || !matches!(path.extension()?.to_str()?, "toml" | "json" | "jsonc")
+                        {
+                            return None;
+                        }
+                        Some(path.file_stem()?.to_string_lossy().into_owned())
                     })
                     .collect()
             })
-            .unwrap_or_default()
+            .unwrap_or_default();
+        names.sort_unstable();
+        names.dedup();
+        names
     }
 
     // merge one theme into the parent theme
@@ -210,25 +217,24 @@ impl Loader {
         merge_toml_values(theme, palette.into(), 1)
     }
 
-    // Loads the theme data as `toml::Value`
-    fn load_toml(&self, path: PathBuf) -> Result<Value> {
+    // Normalize all supported theme formats to the existing merge representation.
+    fn load_file(&self, path: &Path) -> Result<Value> {
         let data = std::fs::read_to_string(path)?;
-        let value = toml::from_str(&data)?;
-
-        Ok(value)
+        Ok(helix_loader::config::parse(&data, path)?)
     }
 
     /// Returns the path to the theme with the given name
     ///
     /// Ignores paths already visited and follows directory priority order.
+    /// Within each directory, TOML takes priority over JSON and JSONC. Visiting
+    /// a theme skips that directory entirely on subsequent same-name lookups,
+    /// so inheritance continues in a lower-priority directory as before.
     fn path(&self, name: &str, visited_paths: &mut HashSet<PathBuf>) -> Result<PathBuf> {
-        let filename = format!("{}.toml", name);
-
         let mut cycle_found = false; // track if there was a path, but it was in a cycle
         self.theme_dirs
             .iter()
             .find_map(|dir| {
-                let path = dir.join(&filename);
+                let path = helix_loader::config::find_config_file(dir, name);
                 if !path.exists() {
                     None
                 } else if visited_paths.contains(&path) {
@@ -670,6 +676,254 @@ impl TryFrom<Value> for ThemePalette {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn write_theme(directory: &Path, filename: &str, source: &str) {
+        let themes = directory.join("themes");
+        std::fs::create_dir_all(&themes).unwrap();
+        std::fs::write(themes.join(filename), source).unwrap();
+    }
+
+    #[test]
+    fn theme_names_include_all_formats_without_duplicates() {
+        let directory = tempfile::tempdir().unwrap();
+        for filename in [
+            "shared.toml",
+            "shared.json",
+            "shared.jsonc",
+            "json.json",
+            "jsonc.jsonc",
+            "ignored.txt",
+        ] {
+            write_theme(directory.path(), filename, "");
+        }
+        std::fs::create_dir(directory.path().join("themes/directory.json")).unwrap();
+        assert_eq!(
+            Loader::read_names(&directory.path().join("themes")),
+            ["json", "jsonc", "shared"]
+        );
+        assert!(Loader::read_names(&directory.path().join("missing")).is_empty());
+    }
+
+    #[test]
+    fn theme_formats_produce_equivalent_styles() {
+        let directory = tempfile::tempdir().unwrap();
+        let loader = Loader::new(&[directory.path().to_owned()]);
+        for (filename, source) in [
+            (
+                "toml.toml",
+                r##"
+                "ui.text" = "accent"
+                "keyword" = { fg = "accent", modifiers = ["bold"], underline = { color = "accent", style = "curl" } }
+                rainbow = ["accent", { fg = "#ffffff" }]
+                [palette]
+                accent = "#123456"
+            "##,
+            ),
+            (
+                "json.json",
+                r##"{"ui.text":"accent","keyword":{"fg":"accent","modifiers":["bold"],"underline":{"color":"accent","style":"curl"}},"rainbow":["accent",{"fg":"#ffffff"}],"palette":{"accent":"#123456"}}"##,
+            ),
+            (
+                "jsonc.jsonc",
+                r##"{
+                // Scope names containing dots are literal keys.
+                "ui.text": "accent",
+                "keyword": {"fg":"accent", "modifiers":["bold",], "underline":{"color":"accent", "style":"curl",},},
+                "rainbow": ["accent", {"fg":"#ffffff"},],
+                "palette": {/* custom colors */ "accent":"#123456",},
+            }"##,
+            ),
+        ] {
+            write_theme(directory.path(), filename, source);
+        }
+        let (expected, warnings) = loader.load_with_warnings("toml").unwrap();
+        assert!(warnings.is_empty(), "{warnings:?}");
+        for name in ["json", "jsonc"] {
+            let (actual, warnings) = loader.load_with_warnings(name).unwrap();
+            assert!(warnings.is_empty(), "{warnings:?}");
+            assert_eq!(actual.styles, expected.styles);
+            assert_eq!(actual.rainbow_length(), expected.rainbow_length());
+        }
+        assert_eq!(
+            expected.get("ui.text").fg,
+            Some(Color::Rgb(0x12, 0x34, 0x56))
+        );
+    }
+
+    #[test]
+    fn mixed_format_inheritance_preserves_palette_merging_and_style_replacement() {
+        let parents = [
+            (
+                "toml",
+                r##"
+                "ui.text" = "accent"
+                "ui.background" = { bg = "background" }
+                keyword = { fg = "accent", bg = "background", modifiers = ["bold"] }
+                [palette]
+                accent = "#112233"
+                background = "#223344"
+            "##,
+            ),
+            (
+                "json",
+                r##"{"ui.text":"accent","ui.background":{"bg":"background"},"keyword":{"fg":"accent","bg":"background","modifiers":["bold"]},"palette":{"accent":"#112233","background":"#223344"}}"##,
+            ),
+            (
+                "jsonc",
+                r##"{"ui.text":"accent","ui.background":{"bg":"background"},"keyword":{"fg":"accent","bg":"background","modifiers":["bold",],},"palette":{"accent":"#112233","background":"#223344",},}"##,
+            ),
+        ];
+        let children = [
+            (
+                "toml",
+                "inherits = 'parent'\nkeyword = { fg = 'accent' }\n[palette]\naccent = '#445566'",
+            ),
+            (
+                "json",
+                r##"{"inherits":"parent","keyword":{"fg":"accent"},"palette":{"accent":"#445566"}}"##,
+            ),
+            (
+                "jsonc",
+                r##"{"inherits":"parent",/* override */"keyword":{"fg":"accent",},"palette":{"accent":"#445566",},}"##,
+            ),
+        ];
+        for (parent_extension, parent) in parents {
+            for (child_extension, child) in children {
+                let directory = tempfile::tempdir().unwrap();
+                write_theme(
+                    directory.path(),
+                    &format!("parent.{parent_extension}"),
+                    parent,
+                );
+                write_theme(directory.path(), &format!("child.{child_extension}"), child);
+                // A third level confirms inherited palette changes propagate through a chain.
+                write_theme(
+                    directory.path(),
+                    "grandchild.jsonc",
+                    r##"{"inherits":"child","palette":{"background":"#778899",},}"##,
+                );
+                let loader = Loader::new(&[directory.path().to_owned()]);
+                let (theme, warnings) = loader.load_with_warnings("grandchild").unwrap();
+                assert!(
+                    warnings.is_empty(),
+                    "{parent_extension} -> {child_extension}: {warnings:?}"
+                );
+                let accent = Style::default().fg(Color::Rgb(0x44, 0x55, 0x66));
+                assert_eq!(theme.get("ui.text"), accent);
+                // Child style tables replace rather than merge parent style fields.
+                assert_eq!(theme.get("keyword"), accent);
+                assert_eq!(
+                    theme.get("ui.background"),
+                    Style::default().bg(Color::Rgb(0x77, 0x88, 0x99))
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn theme_priority_and_same_name_inheritance_work_across_formats() {
+        let directory = tempfile::tempdir().unwrap();
+        let user = directory.path().join("user");
+        let runtime = directory.path().join("runtime");
+        write_theme(
+            &runtime,
+            "shared.toml",
+            "\"ui.text\" = '#112233'\n\"ui.background\" = { bg = '#223344' }",
+        );
+        let loader = Loader::new(&[user.clone(), runtime]);
+        for (filename, source, expected) in [
+            (
+                "shared.jsonc",
+                r##"{"inherits":"shared","ui.text":"#334455",}"##,
+                Color::Rgb(0x33, 0x44, 0x55),
+            ),
+            (
+                "shared.json",
+                r##"{"inherits":"shared","ui.text":"#445566"}"##,
+                Color::Rgb(0x44, 0x55, 0x66),
+            ),
+            (
+                "shared.toml",
+                "inherits = 'shared'\n\"ui.text\" = '#556677'",
+                Color::Rgb(0x55, 0x66, 0x77),
+            ),
+        ] {
+            write_theme(&user, filename, source);
+            let (theme, warnings) = loader.load_with_warnings("shared").unwrap();
+            assert!(warnings.is_empty(), "{warnings:?}");
+            assert_eq!(theme.get("ui.text").fg, Some(expected));
+            assert_eq!(
+                theme.get("ui.background").bg,
+                Some(Color::Rgb(0x22, 0x33, 0x44))
+            );
+        }
+        // Invalid higher-priority files must not silently load a different theme.
+        write_theme(&user, "shared.toml", "invalid = [");
+        assert!(loader.load("shared").is_err());
+    }
+
+    #[test]
+    fn json_themes_can_inherit_reserved_builtin_themes() {
+        let directory = tempfile::tempdir().unwrap();
+        let loader = Loader::new(&[directory.path().to_owned()]);
+        for (name, source) in [
+            ("default", DEFAULT_THEME_DATA.clone()),
+            ("base16_default", BASE16_DEFAULT_THEME_DATA.clone()),
+        ] {
+            // User files still cannot replace the built-in themes.
+            write_theme(directory.path(), &format!("{name}.json"), "invalid JSON");
+            assert_eq!(
+                loader.load(name).unwrap().styles,
+                Theme::from(source).styles
+            );
+            write_theme(
+                directory.path(),
+                "child.jsonc",
+                &format!(r##"{{"inherits":"{name}","ui.text":"#abcdef",}}"##),
+            );
+            let (theme, warnings) = loader.load_with_warnings("child").unwrap();
+            assert!(warnings.is_empty(), "{warnings:?}");
+            assert_eq!(theme.get("ui.text").fg, Some(Color::Rgb(0xab, 0xcd, 0xef)));
+            assert_eq!(
+                theme.get("ui.background"),
+                loader.load(name).unwrap().get("ui.background")
+            );
+        }
+    }
+
+    #[test]
+    fn theme_loader_reports_invalid_json_and_inheritance_errors() {
+        let directory = tempfile::tempdir().unwrap();
+        let loader = Loader::new(&[directory.path().to_owned()]);
+        for (filename, source) in [
+            ("bad.json", r##"{"ui.text":"#ffffff",}"##),
+            ("bad.jsonc", "{} /* unterminated"),
+        ] {
+            write_theme(directory.path(), filename, source);
+            let error = loader.load("bad").unwrap_err().to_string();
+            assert!(error.contains(filename), "{error}");
+            std::fs::remove_file(directory.path().join("themes").join(filename)).unwrap();
+        }
+        write_theme(directory.path(), "a.json", r#"{"inherits":"b"}"#);
+        write_theme(directory.path(), "b.jsonc", r#"{"inherits":"a",}"#);
+        assert!(loader
+            .load("a")
+            .unwrap_err()
+            .to_string()
+            .contains("Cycle found"));
+        write_theme(directory.path(), "b.jsonc", r#"{"inherits":"missing"}"#);
+        assert!(loader
+            .load("a")
+            .unwrap_err()
+            .to_string()
+            .contains("File not found for: missing"));
+        write_theme(directory.path(), "b.jsonc", r#"{"inherits":1}"#);
+        assert!(loader
+            .load("a")
+            .unwrap_err()
+            .to_string()
+            .contains("Expected 'inherits' to be a string"));
+    }
 
     #[test]
     fn test_parse_style_string() {

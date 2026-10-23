@@ -79,8 +79,8 @@
 | `:reflow` | Hard-wrap the current selection of lines to a given width. |
 | `:tree-sitter-subtree`, `:ts-subtree` | Display the smallest tree-sitter subtree that spans the primary selection, primarily for debugging queries. |
 | `:config-reload` | Refresh user config. |
-| `:config-open` | Open the user config.toml file. |
-| `:config-open-workspace` | Open the workspace config.toml file. |
+| `:config-open` | Open the user configuration file. |
+| `:config-open-workspace` | Open the workspace configuration file. |
 | `:log-open` | Open the helix log file. |
 | `:insert-output` | Run shell command, inserting output before each selection. |
 | `:append-output` | Run shell command, appending output after each selection. |

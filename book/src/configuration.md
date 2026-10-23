@@ -33,6 +33,52 @@ signal to the Helix process, such as by using the command `pkill -USR1 hx`.
 Finally, you can have a `config.toml` and a `languages.toml` local to a project by putting it under a `.helix` directory in your repository.
 Its settings will be merged with the configuration directory and the built-in configuration.
 
+## JSON and JSONC (fork extension)
+
+The main configuration and language configuration also accept JSON and JSONC.
+In the configuration directory or a project's `.helix` directory, use
+`config.json` / `config.jsonc` and `languages.json` / `languages.jsonc`.
+Each directory selects **one file per configuration type**, in this order:
+`.toml`, `.json`, `.jsonc`. Files of different formats in the same directory
+are not merged; a parse error in the selected file does not fall back to
+another format. If no file exists, `:config-open` and
+`:config-open-workspace` continue to open a new `config.toml`.
+
+Global and workspace files may use different formats. Workspace settings merge
+with global settings as before, and local files require workspace trust for
+every supported format. `:config-reload` reloads the selected files;
+the global main configuration path is selected at startup, so restart Helix
+when switching that file's format. `hx -c path/to/config.jsonc` explicitly
+selects a main configuration regardless of the default file priority.
+The filename extension selects the parser; other extensions retain TOML parsing.
+
+JSON uses the same setting names and nested structure as TOML. For example,
+`config.jsonc`:
+
+```jsonc
+{
+  // Comments and trailing commas are supported in JSONC.
+  "theme": "onedark",
+  "editor": {
+    "line-number": "relative",
+    "mouse": false,
+    "cursor-shape": {
+      "insert": "bar",
+      "normal": "block",
+      "select": "underline",
+    },
+    "file-picker": { "hidden": false },
+  },
+  "keys": { "normal": { "C-s": ":write" } },
+}
+```
+
+JSONC supports `//` and `/* ... */` comments and trailing commas in objects
+and arrays. `.json` files use strict JSON, without comments or trailing commas.
+Both formats require a top-level object. `null` is unsupported; omit optional
+settings to use their defaults. [Theme files](./themes.md#json-and-jsonc-themes-fork-extension)
+also support TOML, JSON and JSONC.
+
 ## Devicons (fork extension)
 
 This fork provides optional Nerd Font icons in file and directory pickers

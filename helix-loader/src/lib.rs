@@ -149,15 +149,15 @@ pub fn log_file() -> PathBuf {
 }
 
 pub fn workspace_config_file() -> PathBuf {
-    find_workspace().0.join(".helix").join("config.toml")
+    config::find_config_file(&find_workspace().0.join(".helix"), "config")
 }
 
 pub fn workspace_lang_config_file() -> PathBuf {
-    find_workspace().0.join(".helix").join("languages.toml")
+    config::find_config_file(&find_workspace().0.join(".helix"), "languages")
 }
 
 pub fn lang_config_file() -> PathBuf {
-    config_dir().join("languages.toml")
+    config::find_config_file(&config_dir(), "languages")
 }
 
 pub fn default_log_file() -> PathBuf {
@@ -275,7 +275,7 @@ pub fn find_workspace_in(dir: impl AsRef<Path>) -> (PathBuf, bool) {
 }
 
 fn default_config_file() -> PathBuf {
-    config_dir().join("config.toml")
+    config::find_config_file(&config_dir(), "config")
 }
 
 fn ensure_parent_dir(path: &Path) {

@@ -31,6 +31,28 @@ There are three possible locations for a `languages.toml` file:
    `.helix` folder. Its settings will be merged with the language configuration
    in the configuration directory and the built-in configuration.
 
+### JSON and JSONC language files (fork extension)
+
+User and project language overrides may instead use `languages.json` or
+`languages.jsonc`, with the same [format selection and trust rules](./configuration.md#json-and-jsonc-fork-extension)
+as the main configuration. TOML arrays of tables such as `[[language]]` and
+`[[grammar]]` become JSON arrays of objects; TOML tables become JSON objects:
+
+```jsonc
+{
+  "language-server": {
+    "mylang-lsp": { "command": "mylang-lsp" },
+  },
+  "language": [
+    { "name": "rust", "auto-format": false },
+  ],
+}
+```
+
+The built-in `languages.toml` stays unchanged. Language overrides are merged
+by name with the built-in configuration regardless of file format. Grammar
+fetch/build commands also read the selected language configuration.
+
 ## Language configuration
 
 Each language is configured by adding a `[[language]]` section to a

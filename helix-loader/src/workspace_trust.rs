@@ -157,7 +157,7 @@ pub struct WorkspaceTrust {
 #[derive(Clone, Copy)]
 struct CacheEntry {
     status: TrustStatus,
-    /// Whether `.helix/config.toml` or `.helix/languages.toml` exists in the workspace at the time
+    /// Whether a local config or languages file exists in the workspace at the time
     /// of the first uncached query. Snapshotted to keep [`WorkspaceTrust::workspace_restricted`]
     /// off the syscall path on repeat calls (statusline indicator runs per render).
     has_local_config: bool,
@@ -364,8 +364,9 @@ impl WorkspaceTrust {
 }
 
 fn has_local_config(workspace: &Path) -> bool {
-    workspace.join(".helix").join("config.toml").exists()
-        || workspace.join(".helix").join("languages.toml").exists()
+    ["config", "languages"]
+        .iter()
+        .any(|stem| crate::config::find_config_file(&workspace.join(".helix"), stem).exists())
 }
 
 fn demote_for_query(status: TrustStatus, query: TrustQuery) -> TrustStatus {
@@ -586,6 +587,29 @@ mod test {
         }
         let mut f = fs::File::create(path).unwrap();
         f.write_all(contents.as_bytes()).unwrap();
+    }
+
+    #[test]
+    fn json_configuration_is_detected_and_changes_invalidate_trust() {
+        for filename in [
+            "config.json",
+            "config.jsonc",
+            "languages.json",
+            "languages.jsonc",
+        ] {
+            let directory = tempfile::tempdir().unwrap();
+            let workspace = directory.path();
+            let path = workspace.join(".helix").join(filename);
+            write_file(&path, "{}");
+            let mut trust = WorkspaceTrust::new(Config::default());
+            assert!(trust.workspace_restricted(workspace), "{filename}");
+            trust.trust(workspace);
+            assert!(trust.query(workspace, TrustQuery::LocalConfig).is_trusted());
+            write_file(&path, "{\"language\": []}");
+            trust.set_config(Config::default());
+            assert_eq!(trust.status(workspace), TrustStatus::Stale, "{filename}");
+            assert!(!trust.query(workspace, TrustQuery::LocalConfig).is_trusted());
+        }
     }
 
     #[test]

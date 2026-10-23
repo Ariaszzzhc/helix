@@ -254,7 +254,7 @@ fn get_grammar_configs() -> Result<Vec<GrammarConfiguration>> {
     let trust = crate::workspace_trust::WorkspaceTrust::new(Default::default());
     warn_if_workspace_languages_skipped(&trust);
     let config: Configuration = crate::config::user_lang_config(&trust)
-        .context("Could not parse languages.toml")?
+        .context("Could not parse language configuration")?
         .try_into()?;
 
     let grammars = match config.grammar_selection {
@@ -281,7 +281,7 @@ pub fn get_grammar_names() -> Result<Option<HashSet<String>>> {
     let trust = crate::workspace_trust::WorkspaceTrust::new(Default::default());
     warn_if_workspace_languages_skipped(&trust);
     let config: Configuration = crate::config::user_lang_config(&trust)
-        .context("Could not parse languages.toml")?
+        .context("Could not parse language configuration")?
         .try_into()?;
 
     let grammars = match config.grammar_selection {

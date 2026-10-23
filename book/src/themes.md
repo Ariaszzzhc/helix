@@ -132,6 +132,41 @@ supported by your terminal emulator.
 | `double_line`  |
 
 
+### JSON and JSONC themes (fork extension)
+
+Theme files also support `.json` and `.jsonc`, for example
+`~/.config/helix/themes/mytheme.jsonc`. Select the theme by its filename without
+the extension: `:theme mytheme` or `theme = "mytheme"` in TOML configuration.
+All three formats appear in theme completion, with each name listed once.
+
+Directory priority takes precedence over format: a user JSON theme can override
+a runtime TOML theme. Within each directory, a name selects `.toml` first,
+then `.json`, then `.jsonc`. A parse error in the selected file is reported
+without falling back to another format or directory.
+
+JSON uses the same style values and palette entries as TOML. Dotted scope names
+are literal JSON keys, rather than nested objects. JSONC additionally supports
+`//` and `/* ... */` comments and trailing commas:
+
+```jsonc
+{
+  "inherits": "boo_berry",
+  "ui.background": { "bg": "background" },
+  "keyword": { "fg": "gold", "modifiers": ["bold"] },
+  "palette": {
+    // Override the inherited palette, keeping its other colors.
+    "background": "#202030",
+  },
+}
+```
+
+Inheritance can mix formats at any level. Child styles replace parent styles
+as in TOML, while palette entries merge and child colors override matching
+parent colors. Inheriting a theme of the same name searches lower-priority
+directories, regardless of format. The names `default` and `base16_default`
+remain reserved for the built-in themes and may also be inherited from JSON
+or JSONC. JSON and JSONC require a top-level object and do not support `null`.
+
 ### Inheritance
 
 Extend other themes by setting the `inherits` property to an existing theme.

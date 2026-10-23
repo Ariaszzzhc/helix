@@ -59,6 +59,7 @@ impl Display for ConfigLoadError {
 }
 
 impl Config {
+    #[cfg(test)]
     pub fn load(
         global: Result<&String, ConfigLoadError>,
         local: Result<String, ConfigLoadError>,
@@ -67,6 +68,13 @@ impl Config {
             global.and_then(|file| toml::from_str(file).map_err(ConfigLoadError::BadConfig));
         let local_config: Result<ConfigRaw, ConfigLoadError> =
             local.and_then(|file| toml::from_str(&file).map_err(ConfigLoadError::BadConfig));
+        Self::load_raw(global_config, local_config)
+    }
+
+    fn load_raw(
+        global_config: Result<ConfigRaw, ConfigLoadError>,
+        local_config: Result<ConfigRaw, ConfigLoadError>,
+    ) -> Result<Config, ConfigLoadError> {
         let res = match (global_config, local_config) {
             (Ok(global), Ok(local)) => {
                 let mut keys = keymap::default();
@@ -135,14 +143,15 @@ impl Config {
         Ok(res)
     }
 
-    pub fn load_default() -> Result<Config, ConfigLoadError> {
-        let global_config =
-            fs::read_to_string(helix_loader::config_file()).map_err(ConfigLoadError::Error)?;
-        let local_config = fs::read_to_string(helix_loader::workspace_config_file())
-            .map_err(ConfigLoadError::Error);
+    fn read_file(path: &std::path::Path) -> Result<ConfigRaw, ConfigLoadError> {
+        let source = fs::read_to_string(path).map_err(ConfigLoadError::Error)?;
+        helix_loader::config::parse(&source, path).map_err(ConfigLoadError::BadConfig)
+    }
 
-        let phony_config = ConfigLoadError::Error(IOError::other("hacky placeholder"));
-        let global_parsed = Config::load(Ok(&global_config), Err(phony_config))?;
+    pub fn load_default() -> Result<Config, ConfigLoadError> {
+        let global_config = Self::read_file(&helix_loader::config_file())?;
+        let global_parsed =
+            Self::load_raw(Ok(global_config.clone()), Err(ConfigLoadError::default()))?;
 
         // We need to build a transient `WorkspaceTrust` just to ask whether the workspace is
         // trusted enough to load its `.helix/config.toml`. The persisted-trust file on disk is the
@@ -155,7 +164,8 @@ impl Config {
             .query_current(helix_loader::workspace_trust::TrustQuery::LocalConfig)
             .is_trusted()
         {
-            let mut merged = Config::load(Ok(&global_config), local_config)?;
+            let local_config = Self::read_file(&helix_loader::workspace_config_file());
+            let mut merged = Self::load_raw(Ok(global_config), local_config)?;
             // editor.workspace-trust is global/user-scope only. Without this override, a
             // workspace's `.helix/config.toml` could set `level = "insecure"`; once the user trusted
             // *that* workspace, refresh_config would re-load with the override merged in and from
@@ -176,6 +186,77 @@ mod tests {
     impl Config {
         fn load_test(config: &str) -> Config {
             Config::load(Ok(&config.to_owned()), Err(ConfigLoadError::default())).unwrap()
+        }
+    }
+
+    #[test]
+    fn json_and_jsonc_load_like_toml_including_keymaps() {
+        let directory = tempfile::tempdir().unwrap();
+        let expected = Config::load_test(
+            r#"
+            theme = "onedark"
+            [editor]
+            mouse = false
+            line-number = "relative"
+            [keys.normal]
+            C-s = ":write"
+            [devicons]
+            enable = true
+        "#,
+        );
+        for (extension, source) in [
+            (
+                "json",
+                r#"{"theme":"onedark","editor":{"mouse":false,"line-number":"relative"},"keys":{"normal":{"C-s":":write"}},"devicons":{"enable":true}}"#,
+            ),
+            (
+                "jsonc",
+                r#"{
+                // JSONC uses the same configuration keys as TOML.
+                "theme": "onedark",
+                "editor": {"mouse": false, "line-number": "relative",},
+                "keys": {"normal": {"C-s": ":write",},},
+                "devicons": {"enable": true,},
+            }"#,
+            ),
+        ] {
+            let path = directory.path().join(format!("config.{extension}"));
+            fs::write(&path, source).unwrap();
+            let actual =
+                Config::load_raw(Config::read_file(&path), Err(ConfigLoadError::default()))
+                    .unwrap();
+            assert_eq!(actual, expected);
+        }
+    }
+
+    #[test]
+    fn mixed_format_workspace_overrides_and_validation() {
+        let directory = tempfile::tempdir().unwrap();
+        let global = directory.path().join("config.toml");
+        let local = directory.path().join("config.jsonc");
+        fs::write(
+            &global,
+            "[editor]\nmouse = false\n[editor.cursor-shape]\ninsert = 'bar'",
+        )
+        .unwrap();
+        fs::write(
+            &local,
+            r#"{"editor":{"line-number":"relative","cursor-shape":{"normal":"underline",},},}"#,
+        )
+        .unwrap();
+        let actual =
+            Config::load_raw(Config::read_file(&global), Config::read_file(&local)).unwrap();
+        let expected = Config::load_test("[editor]\nmouse = false\nline-number = 'relative'\n[editor.cursor-shape]\ninsert = 'bar'\nnormal = 'underline'");
+        assert_eq!(actual, expected);
+        for source in [
+            r#"{"editor":{"unknown-option":true}}"#,
+            r#"{"editor":{"mouse":"false"}}"#,
+            r#"{"keys":{"normal":{"C-s":"unknown-command"}}}"#,
+        ] {
+            fs::write(&local, source).unwrap();
+            assert!(
+                Config::load_raw(Config::read_file(&global), Config::read_file(&local)).is_err()
+            );
         }
     }
 
