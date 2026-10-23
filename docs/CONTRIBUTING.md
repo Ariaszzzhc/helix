@@ -64,10 +64,9 @@ the default value (e.g. to `10240` from `256`) by running `ulimit -n 10240`.
 Helix keeps an intentionally low MSRV for the sake of easy building and packaging
 downstream. We follow [Firefox's MSRV policy]. Once Firefox's MSRV increases we
 may bump ours as well, but be sure to check that popular distributions like Ubuntu
-package the new MSRV version. When increasing the MSRV, update these three places:
+package the new MSRV version. When increasing the MSRV, update these two places:
 
 * the `workspace.package.rust-version` key in `Cargo.toml` in the repository root
-* the `env.MSRV` key at the top of `.github/workflows/build.yml`
 * the `toolchain.channel` key in `rust-toolchain.toml`
 
 [Firefox's MSRV policy]: https://firefox-source-docs.mozilla.org/writing-rust-code/update-policy.html
