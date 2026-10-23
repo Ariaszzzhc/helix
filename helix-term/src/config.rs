@@ -218,6 +218,27 @@ mod tests {
     }
 
     #[test]
+    fn completion_highlighting_configuration_is_independent_of_devicons() {
+        let default = Config::load_test("");
+        assert!(default.editor.completion_highlight);
+        assert_eq!(default.editor.completion_max_width.get(), 60);
+        assert!(!default.devicons.enable);
+
+        let config = Config::load_test(
+            "[editor]\ncompletion-highlight = false\ncompletion-max-width = 40\n",
+        );
+        assert!(!config.editor.completion_highlight);
+        assert_eq!(config.editor.completion_max_width.get(), 40);
+        assert!(!config.devicons.enable);
+
+        assert!(Config::load(
+            Ok(&"[editor]\ncompletion-max-width = 0".to_owned()),
+            Err(ConfigLoadError::default())
+        )
+        .is_err());
+    }
+
+    #[test]
     fn devicons_preserves_existing_editor_configuration() {
         let legacy = r#"
             theme = "onedark"

@@ -125,3 +125,69 @@ async fn file_picker_icons_do_not_participate_in_fuzzy_matching() -> anyhow::Res
     drop(picker);
     test_key_sequence(&mut app, None, None, false).await
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn completion_menu_keeps_token_colors_on_the_selected_row() -> anyhow::Result<()> {
+    use helix_term::ui::menu::{Cell, Item, Row};
+    use tui::text::{Span, Spans};
+
+    struct ColoredLabel;
+    impl Item for ColoredLabel {
+        type Data = ();
+        fn format(&self, _: &()) -> Row<'_> {
+            Row::new([Cell::from(Spans::from(vec![
+                Span::styled(
+                    "fi",
+                    Style::default()
+                        .fg(Color::Rgb(255, 0, 0))
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled("nd", Style::default().fg(Color::Rgb(255, 0, 0))),
+            ]))])
+        }
+    }
+
+    let mut app = AppBuilder::new().build()?;
+    let original_theme = app.editor.theme.clone();
+    app.editor.theme = helix_view::Theme::from(toml::from_str::<toml::Value>(indoc! {r##"
+        "ui.menu" = { fg = "#333333", bg = "#eeeeee" }
+        "ui.menu.selected" = { fg = "#00ff00", bg = "#112233" }
+    "##})?);
+    let mut jobs = Jobs::new();
+    let mut cx = Context {
+        editor: &mut app.editor,
+        jobs: &mut jobs,
+        scroll: None,
+    };
+    for preserve in [true, false] {
+        let mut menu =
+            ui::Menu::new(vec![ColoredLabel], (), |_, _, _| {}).preserve_highlight_colors(preserve);
+        menu.move_down();
+        let mut surface = Buffer::empty(Rect::new(0, 0, 12, 1));
+        menu.required_size((12, 1));
+        menu.render(surface.area, &mut surface, &mut cx);
+        let offset = surface
+            .content
+            .iter()
+            .position(|cell| cell.symbol.as_str() == "f")
+            .unwrap();
+        assert_eq!(
+            surface.content[offset].fg,
+            if preserve {
+                Color::Rgb(255, 0, 0)
+            } else {
+                Color::Rgb(0, 255, 0)
+            }
+        );
+        assert_eq!(surface.content[offset].bg, Color::Rgb(0x11, 0x22, 0x33));
+        assert!(surface.content[offset].modifier.contains(Modifier::BOLD));
+        assert!(surface.content[offset + 1]
+            .modifier
+            .contains(Modifier::BOLD));
+        assert!(!surface.content[offset + 2]
+            .modifier
+            .contains(Modifier::BOLD));
+    }
+    app.editor.theme = original_theme;
+    test_key_sequence(&mut app, None, None, false).await
+}

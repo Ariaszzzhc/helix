@@ -391,6 +391,10 @@ pub struct Config {
     /// Whether to instruct the LSP to replace the entire word when applying a completion
     /// or to only insert new text
     pub completion_replace: bool,
+    /// Highlight completion labels independently of completion icons.
+    pub completion_highlight: bool,
+    /// Maximum completion label width in terminal cells.
+    pub completion_max_width: std::num::NonZeroU16,
     /// `true` if helix should automatically add a line comment token if you're currently in a comment
     /// and press `enter`.
     pub continue_comments: bool,
@@ -1255,6 +1259,8 @@ impl Default for Config {
             },
             text_width: 80,
             completion_replace: false,
+            completion_highlight: true,
+            completion_max_width: std::num::NonZeroU16::new(60).unwrap(),
             continue_comments: true,
             workspace_lsp_roots: Vec::new(),
             default_line_ending: LineEndingConfig::default(),

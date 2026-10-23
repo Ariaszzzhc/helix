@@ -1,6 +1,7 @@
 ## Editor
 
 - [`[editor]` Section](#editor-section)
+- [Completion label highlighting](#completion-label-highlighting)
 - [`[editor.clipboard-provider]` Section](#editorclipboard-provider-section)
 - [`[editor.statusline]` Section](#editorstatusline-section)
 - [`[editor.lsp]` Section](#editorlsp-section)
@@ -49,6 +50,8 @@
 | `completion-timeout` | Time in milliseconds after typing a word character before completions are shown, set to 5 for instant.  | `250` |
 | `preview-completion-insert` | Whether to apply completion item instantly when selected | `true` |
 | `completion-trigger-len` | The min-length of word under cursor to trigger autocompletion | `2` |
+| `completion-highlight` | Highlight completion labels using syntax colors, independently of devicons. See [completion label highlighting](#completion-label-highlighting). | `true` |
+| `completion-max-width` | Maximum highlighted completion label width in terminal cells (positive integer). Long signatures are truncated while preserving type information. | `60` |
 | `completion-replace` | Whether to make completions always replace the entire word and not just the part before the cursor | `false` |
 | `auto-info` | Whether to display info boxes | `true` |
 | `true-color` | Whether to override automatic detection of terminal truecolor support in the event of a false negative | `false` |
@@ -610,4 +613,54 @@ level = "servers"
 # Discouraged: skips .helix/ change detection and trusts anything that lands
 # under a matching path. `~` and environment variables are expanded.
 trusted = ["~/src/github.com/me/*"]
+```
+
+### Completion label highlighting
+
+`editor.completion-highlight` enables label highlighting without requiring a
+`[devicons]` section or a Nerd Font. `editor.completion-max-width` sets the maximum
+label width in terminal cells. Both settings apply independently of icons.
+
+Completion labels use the current theme's syntax colors. Function names,
+parameters, types, punctuation, and metadata have separate styles; the selected
+row retains these foreground colors and uses `ui.menu.selected` for its background
+and modifiers. Matched characters use `ui.menu.match`, falling back to bold so
+syntax colors stay visible. A theme can override these scopes.
+
+Built-in LSP adapters support the following language servers:
+
+| Language | Language server names |
+| --- | --- |
+| Rust | `rust-analyzer`, `rust_analyzer` |
+| Go | `gopls` |
+| Lua | `lua-language-server`, `lua_ls`, `lua-ls` |
+| C/C++ | `clangd` |
+| TypeScript | `typescript-language-server`, `ts_ls`, `tsserver`, `typescript-tools`, `vtsls` |
+| PHP | `intelephense` |
+| Zig | `zls` |
+| C# | `roslyn`, `roslyn_ls`, `roslyn-ls`, `roslyn-language-server`, `easy_dotnet` |
+| Python | `basedpyright`, `pyright`, `pylance`, `pylsp`, `python-lsp-server` |
+| Dart | `dartls`, `dart`, `dart-language-server` |
+
+Adapters reconstruct display-only declarations from the LSP label, label details,
+and signature information. Helix's installed Tree-sitter grammars and queries
+provide syntax colors. Type and origin information is aligned to the right;
+long labels are truncated on grapheme boundaries. Display changes never alter
+filtering, ranking, snippets, or inserted text. Parsed labels are cached for the
+lifetime of a completion menu, including changes from resolved LSP items.
+
+**Other servers and missing grammars also receive default highlights**, chosen
+by completion kind (`function`, `type`, `variable`, `constant`, `keyword`, etc.).
+Additional information uses `comment` styling. There is no parser or language
+server installation requirement for this fallback.
+
+Completion icons use Nerd Font glyphs, colored by the matching syntax scope
+unless overridden in `[devicons.kind]` or the theme. Actual color swatches retain
+their represented color. Existing custom icon overrides are preserved.
+
+To restore plain labels:
+
+```toml
+[editor]
+completion-highlight = false
 ```

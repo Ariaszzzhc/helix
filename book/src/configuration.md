@@ -111,4 +111,6 @@ language-server color swatches continue to show the actual color.
 Reopen a picker or completion menu to use the refreshed configuration and theme.
 Trusted project-local `.helix/config.toml` settings merge with global settings,
 including individual fields of icon overrides. Disabling or removing `[devicons]`
-restores the original UI without migrating any existing settings.
+restores the original icon-free UI without migrating any existing settings.
+Completion highlighting is configured independently in
+[`[editor]`](editor.md#completion-label-highlighting).

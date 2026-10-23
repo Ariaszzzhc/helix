@@ -1,3 +1,6 @@
+mod format;
+mod highlight;
+
 use crate::handlers::completion::LspCompletionItem;
 use crate::ui::{menu, Markdown, Menu, Popup, PromptEvent};
 use crate::{
@@ -29,6 +32,8 @@ pub struct CompletionStyle {
     directory: Style,
     devicons: std::sync::Arc<helix_view::devicons::Config>,
     theme: helix_view::Theme,
+    highlighter: Option<highlight::Highlighter>,
+    completion_max_width: std::num::NonZeroU16,
 }
 
 impl menu::Item for CompletionItem {
@@ -107,15 +112,31 @@ impl menu::Item for CompletionItem {
             CompletionItem::Other(core::CompletionItem { kind, .. }) => kind.as_ref().into(),
         };
 
-        let label = Span::styled(
-            label,
-            if deprecated {
-                Style::default().add_modifier(Modifier::CROSSED_OUT)
-            } else if kind.0.first().is_some_and(|span| span.content == "folder") {
-                data.directory
-            } else {
-                Style::default()
-            },
+        let label = data
+            .highlighter
+            .as_ref()
+            .map(|highlighter| {
+                highlighter.label(self, &data.theme, data.completion_max_width.get() as usize)
+            })
+            .unwrap_or_else(|| Spans::from(Span::raw(label)));
+        let label_style = if deprecated {
+            Style::default().add_modifier(Modifier::CROSSED_OUT)
+        } else if data.highlighter.is_none()
+            && kind.0.first().is_some_and(|span| span.content == "folder")
+        {
+            data.directory
+        } else {
+            Style::default()
+        };
+        let label = Spans::from(
+            label
+                .0
+                .into_iter()
+                .map(|mut span| {
+                    span.style = span.style.patch(label_style);
+                    span
+                })
+                .collect::<Vec<_>>(),
         );
 
         let show_icons = data.devicons.enable && data.devicons.completion;
@@ -135,8 +156,14 @@ impl menu::Item for CompletionItem {
                 // Keep the language server's actual color swatch.
                 if name == "color" {
                     if let Some(swatch) = kind.0.last().filter(|_| kind.0.len() > 1) {
+                        icon.glyph = "■";
                         icon.style = icon.style.patch(swatch.style);
                     }
+                }
+                if data.devicons.color && icon.style.fg.is_none() {
+                    icon.style =
+                        highlight::scope_style(&data.theme, highlight::scope_for_name(name))
+                            .patch(icon.style);
                 }
                 Spans::from(super::icon_span(icon))
             }
@@ -158,6 +185,7 @@ pub struct Completion {
     #[allow(dead_code)]
     trigger_offset: usize,
     filter: String,
+    label_filter: std::sync::Arc<parking_lot::RwLock<String>>,
     // TODO: move to helix-view/central handler struct in the future
     resolve_handler: ResolveHandler,
 }
@@ -169,10 +197,20 @@ impl Completion {
         let preview_completion_insert = editor.config().preview_completion_insert;
         let replace_mode = editor.config().completion_replace;
 
+        let highlighter = editor
+            .config()
+            .completion_highlight
+            .then(|| highlight::Highlighter::new(editor));
+        let label_filter = highlighter
+            .as_ref()
+            .map(|highlighter| highlighter.filter.clone())
+            .unwrap_or_default();
         let style = CompletionStyle {
             directory: editor.theme.get("ui.text.directory"),
             devicons: editor.devicons.clone(),
             theme: editor.theme.clone(),
+            highlighter,
+            completion_max_width: editor.config().completion_max_width,
         };
 
         // Then create the menu
@@ -330,6 +368,7 @@ impl Completion {
             }
         });
 
+        let menu = menu.preserve_highlight_colors(editor.config().completion_highlight);
         let popup = Popup::new(Self::ID, menu)
             .with_scrollbar(false)
             .ignore_escape_key(true);
@@ -351,6 +390,7 @@ impl Completion {
             // TODO: expand nucleo api to allow moving straight to a Utf32String here
             // and avoid allocation during matching
             filter: String::from(fragment),
+            label_filter,
             resolve_handler: ResolveHandler::new(),
         };
 
@@ -361,6 +401,7 @@ impl Completion {
     }
 
     fn score(&mut self, incremental: bool) {
+        self.label_filter.write().clone_from(&self.filter);
         let pattern = &self.filter;
         let mut matcher = MATCHER.lock();
         matcher.config = Config::DEFAULT;
@@ -726,6 +767,8 @@ mod tests {
             directory: Style::default().fg(Color::Blue),
             devicons: std::sync::Arc::new(toml::from_str(config).unwrap()),
             theme: helix_view::theme::DEFAULT_THEME.clone(),
+            highlighter: None,
+            completion_max_width: helix_view::editor::Config::default().completion_max_width,
         }
     }
 
@@ -734,7 +777,10 @@ mod tests {
         let completion = item(Some(lsp::CompletionItemKind::FUNCTION));
         let enabled = style("enable = true\n[kind]\nfunction = 'F'");
         let row = completion.format(&enabled);
-        assert_eq!(row.cells[0].content, menu::Cell::from("F").content);
+        assert_eq!(
+            row.cells[0].content,
+            menu::Cell::from(Span::styled("F", enabled.theme.get("function"))).content
+        );
         assert_eq!(row.cells[1].content, menu::Cell::from("label").content);
         for config in ["", "enable = true\ncompletion = false"] {
             let row = completion.format(&style(config));

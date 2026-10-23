@@ -36,6 +36,7 @@ pub struct Menu<T: Item> {
     viewport: (u16, u16),
     recalculate: bool,
     auto_close: bool,
+    preserve_highlight_colors: bool,
 }
 
 impl<T: Item> Menu<T> {
@@ -61,6 +62,7 @@ impl<T: Item> Menu<T> {
             viewport: (0, 0),
             recalculate: true,
             auto_close: false,
+            preserve_highlight_colors: false,
         }
     }
 
@@ -131,6 +133,13 @@ impl<T: Item> Menu<T> {
 
     pub fn auto_close(mut self, auto_close: bool) -> Self {
         self.auto_close = auto_close;
+        self
+    }
+
+    /// Keep per-token foreground colors while applying the selected row's
+    /// background and modifiers. Ordinary menus retain their existing styling.
+    pub fn preserve_highlight_colors(mut self, preserve: bool) -> Self {
+        self.preserve_highlight_colors = preserve;
         self
     }
 
@@ -337,7 +346,10 @@ impl<T: Item + 'static> Component for Menu<T> {
         let style = theme
             .try_get("ui.menu")
             .unwrap_or_else(|| theme.get("ui.text"));
-        let selected = theme.get("ui.menu.selected");
+        let mut selected = theme.get("ui.menu.selected");
+        if self.preserve_highlight_colors {
+            selected.fg = None;
+        }
 
         surface.clear_with(area, style);
 
