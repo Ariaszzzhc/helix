@@ -17,12 +17,28 @@ pub enum AutoSaveEvent {
     LeftInsertMode,
 }
 
+#[derive(Debug)]
+pub struct BlameEvent {
+    pub doc_id: DocumentId,
+    pub line: Option<BlameQuery>,
+}
+
+/// The original target of a debounced manual query.
+#[derive(Debug)]
+pub struct BlameQuery {
+    pub view: ViewId,
+    pub line: u32,
+    pub version: i32,
+    pub path: std::path::PathBuf,
+}
+
 pub struct Handlers {
     // only public because most of the actual implementation is in helix-term right now :/
     pub completions: CompletionHandler,
     pub signature_hints: Sender<lsp::SignatureHelpEvent>,
     pub auto_save: Sender<AutoSaveEvent>,
     pub document_colors: Sender<lsp::DocumentColorsEvent>,
+    pub blame: Sender<BlameEvent>,
     pub document_links: Sender<lsp::DocumentLinksEvent>,
     pub word_index: word_index::Handler,
     pub pull_diagnostics: Sender<lsp::PullDiagnosticsEvent>,

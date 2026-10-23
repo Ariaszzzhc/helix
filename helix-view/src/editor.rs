@@ -176,6 +176,38 @@ impl Default for GutterLineNumbersConfig {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum InlineBlameShow {
+    /// Do not show inline blame. Background fetching is controlled separately.
+    Never,
+    /// Show the inline blame on the cursor line
+    CursorLine,
+    /// Show inline blame on all visible committed lines
+    AllLines,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
+pub struct InlineBlameConfig {
+    /// How to show the inline blame
+    pub show: InlineBlameShow,
+    /// Whether the inline blame should be fetched in the background
+    pub auto_fetch: bool,
+    /// How the inline blame should look like and the information it includes
+    pub format: String,
+}
+
+impl Default for InlineBlameConfig {
+    fn default() -> Self {
+        Self {
+            show: InlineBlameShow::Never,
+            format: "{author}, {time-ago} • {title} • {commit}".to_owned(),
+            auto_fetch: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
 pub struct FilePickerConfig {
@@ -427,6 +459,8 @@ pub struct Config {
     /// Whether to read settings from [EditorConfig](https://editorconfig.org) files. Defaults to
     /// `true`.
     pub editor_config: bool,
+    /// Inline blame allows showing the latest commit that affected the line the cursor is on as virtual text
+    pub inline_blame: InlineBlameConfig,
     /// Whether to render rainbow colors for matching brackets. Defaults to `false`.
     pub rainbow_brackets: bool,
     /// Whether to enable Kitty Keyboard Protocol
@@ -1235,6 +1269,7 @@ impl Default for Config {
             inline_diagnostics: InlineDiagnosticsConfig::default(),
             end_of_line_diagnostics: DiagnosticFilter::Enable(Severity::Hint),
             clipboard_provider: ClipboardProvider::default(),
+            inline_blame: InlineBlameConfig::default(),
             editor_config: true,
             rainbow_brackets: false,
             kitty_keyboard_protocol: Default::default(),

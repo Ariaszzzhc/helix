@@ -9,8 +9,10 @@ use std::{
     sync::Arc,
 };
 
+mod blame;
 #[cfg(feature = "git")]
 mod git;
+pub use blame::{FileBlame, LineBlame, MappedBlame};
 
 mod diff;
 

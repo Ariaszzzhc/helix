@@ -614,6 +614,7 @@ impl MappableCommand {
         extend_to_word, "Extend to a two-character label",
         goto_next_tabstop, "Goto next snippet placeholder",
         goto_prev_tabstop, "Goto next snippet placeholder",
+        blame_line, "Show blame for the current line",
         rotate_selections_first, "Make the first selection your primary one",
         rotate_selections_last, "Make the last selection your primary one",
     );
@@ -3703,6 +3704,25 @@ enum IndentFallbackPos {
 // If the line is empty, automatically indent.
 fn insert_at_line_start(cx: &mut Context) {
     insert_with_indent(cx, IndentFallbackPos::LineStart);
+}
+
+fn blame_line(cx: &mut Context) {
+    let (view, doc) = current_ref!(cx.editor);
+    let Some(path) = doc.path() else {
+        cx.editor.set_error("Blame requires a file path");
+        return;
+    };
+    let event = helix_view::handlers::BlameEvent {
+        doc_id: doc.id(),
+        line: Some(helix_view::handlers::BlameQuery {
+            view: view.id,
+            line: doc.cursor_line(view.id) as u32,
+            version: doc.version(),
+            path: path.to_path_buf(),
+        }),
+    };
+    helix_event::send_blocking(&cx.editor.handlers.blame, event);
+    cx.editor.set_status("Requested blame...");
 }
 
 // `A` inserts at the end of each line with a selection.

@@ -207,6 +207,10 @@ pub struct Document {
     pub(crate) language_servers: HashMap<LanguageServerName, Arc<Client>>,
 
     diff_handle: Option<DiffHandle>,
+    pub file_blame: Option<Arc<helix_vcs::MappedBlame>>,
+    pub blame_controller: TaskController,
+    pub blame_last_check: Option<std::time::Instant>,
+    pub blame_trust_full: bool,
     version_control_head: Option<Arc<ArcSwap<Box<str>>>>,
 
     // when document was used for most-recent-used buffer picker
@@ -760,6 +764,10 @@ impl Document {
             modified_since_accessed: false,
             language_servers: HashMap::new(),
             diff_handle: None,
+            file_blame: None,
+            blame_controller: TaskController::new(),
+            blame_last_check: None,
+            blame_trust_full: false,
             config,
             version_control_head: None,
             focused_at: std::time::Instant::now(),
@@ -1294,6 +1302,9 @@ impl Document {
             },
         };
 
+        self.blame_controller.cancel();
+        self.blame_last_check = None;
+
         // Once we have a valid path we check if its readonly status has changed
         self.detect_readonly();
 
@@ -1339,6 +1350,7 @@ impl Document {
     /// observers (like LSP), in most cases `Editor::set_doc_path`
     /// should be used instead
     pub fn set_path(&mut self, path: Option<&Path>) {
+        self.clear_blame();
         let path = path.map(helix_stdx::path::canonicalize);
 
         // `take` to remove any prior relative path that may have existed.
@@ -1987,6 +1999,31 @@ impl Document {
 
     pub fn diff_handle(&self) -> Option<&DiffHandle> {
         self.diff_handle.as_ref()
+    }
+
+    pub fn clear_blame(&mut self) {
+        self.blame_controller.cancel();
+        self.file_blame = None;
+        self.blame_last_check = None;
+    }
+
+    /// Format only immutable, already decoded data for the exact buffer.
+    pub fn line_blame(&self, line: u32, format: &str) -> Result<String, Error> {
+        let blame = self
+            .file_blame
+            .as_ref()
+            .filter(|blame| blame.text.is_instance(self.text()))
+            .ok_or_else(|| anyhow!("Blame is not ready yet"))?;
+        blame
+            .line(line)
+            .map(|line| line.format(format))
+            .ok_or_else(|| anyhow!("Not committed yet"))
+    }
+
+    pub fn cursor_line(&self, view_id: ViewId) -> usize {
+        self.selection(view_id)
+            .primary()
+            .cursor_line(self.text().slice(..))
     }
 
     /// Intialize/updates the differ for this document with a new base.

@@ -16,6 +16,7 @@ use self::document_colors::DocumentColorsHandler;
 use self::document_links::DocumentLinksHandler;
 
 mod auto_save;
+mod blame;
 mod code_action_hint;
 pub mod completion;
 pub mod diagnostics;
@@ -35,6 +36,7 @@ pub fn setup(config: Arc<ArcSwap<Config>>) -> Handlers {
     let auto_save = AutoSaveHandler::new().spawn();
     let code_action_hint = code_action_hint::Handler::default().spawn();
     let document_colors = DocumentColorsHandler::default().spawn();
+    let blame = blame::BlameHandler::default().spawn();
     let document_links = DocumentLinksHandler::default().spawn();
     let word_index = word_index::Handler::spawn();
     let pull_diagnostics = PullDiagnosticsHandler::default().spawn();
@@ -45,6 +47,7 @@ pub fn setup(config: Arc<ArcSwap<Config>>) -> Handlers {
         signature_hints,
         auto_save,
         document_colors,
+        blame,
         document_links,
         word_index,
         pull_diagnostics,
@@ -61,6 +64,7 @@ pub fn setup(config: Arc<ArcSwap<Config>>) -> Handlers {
     diagnostics::register_hooks(&handlers);
     snippet::register_hooks(&handlers);
     document_colors::register_hooks(&handlers);
+    blame::register_hooks(&handlers);
     document_links::register_hooks(&handlers);
     prompt::register_hooks(&handlers);
     workspace_trust::register_hooks(&handlers);

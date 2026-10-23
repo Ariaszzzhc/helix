@@ -25,7 +25,7 @@ use helix_core::{
 use helix_view::{
     annotations::diagnostics::DiagnosticFilter,
     document::{Mode, SCRATCH_BUFFER_NAME},
-    editor::{CompleteAction, CursorShapeConfig},
+    editor::{CompleteAction, CursorShapeConfig, InlineBlameConfig, InlineBlameShow},
     graphics::{Color, CursorKind, Modifier, Rect, Style},
     input::{KeyEvent, MouseButton, MouseEvent, MouseEventKind},
     keyboard::{KeyCode, KeyModifiers},
@@ -34,6 +34,8 @@ use helix_view::{
 use std::{mem::take, num::NonZeroUsize, ops, path::PathBuf, rc::Rc};
 
 use tui::{buffer::Buffer as Surface, text::Span};
+
+use super::text_decorations::blame::InlineBlame;
 
 pub struct EditorView {
     pub keymaps: Keymaps,
@@ -181,6 +183,7 @@ impl EditorView {
         }
 
         Self::render_rulers(editor, doc, view, inner, surface, theme);
+        Self::render_inline_blame(&config.inline_blame, doc, view, &mut decorations, theme);
 
         let primary_cursor = doc
             .selection(view.id)
@@ -244,6 +247,36 @@ impl EditorView {
             statusline::RenderContext::new(editor, doc, view, is_focused, &self.spinners);
 
         statusline::render(&mut context, statusline_area, surface);
+    }
+
+    fn render_inline_blame(
+        inline_blame: &InlineBlameConfig,
+        doc: &Document,
+        view: &View,
+        decorations: &mut DecorationManager,
+        theme: &Theme,
+    ) {
+        let lines = match inline_blame.show {
+            InlineBlameShow::Never => return,
+            InlineBlameShow::CursorLine => {
+                let line = doc.cursor_line(view.id);
+                line..line + 1
+            }
+            InlineBlameShow::AllLines => view.line_range(doc),
+        };
+        let lines = lines
+            .filter_map(|line| {
+                if doc.text().line(line).chars().all(char::is_whitespace) {
+                    return None;
+                }
+                let blame = doc.line_blame(line as u32, &inline_blame.format).ok()?;
+                (!blame.is_empty()).then_some((line, blame))
+            })
+            .collect();
+        decorations.add_decoration(InlineBlame::new(
+            theme.get("ui.virtual.inline-blame"),
+            lines,
+        ));
     }
 
     pub fn render_rulers(

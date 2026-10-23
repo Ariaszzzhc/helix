@@ -13,7 +13,7 @@ use crate::diff::worker::DiffWorker;
 
 pub use imara_diff::Hunk;
 
-mod line_cache;
+pub(crate) mod line_cache;
 mod worker;
 
 /// A rendering lock passed to the differ the prevents redraws from occurring

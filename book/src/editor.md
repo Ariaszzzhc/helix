@@ -4,6 +4,7 @@
 - [`[editor.clipboard-provider]` Section](#editorclipboard-provider-section)
 - [`[editor.statusline]` Section](#editorstatusline-section)
 - [`[editor.lsp]` Section](#editorlsp-section)
+- [`[editor.inline-blame]` Section](#editorinlineblame-section)
 - [`[editor.cursor-shape]` Section](#editorcursor-shape-section)
 - [`[editor.file-picker]` Section](#editorfile-picker-section)
 - [`[editor.file-explorer]` Section](#editorfile-explorer-section)
@@ -180,6 +181,50 @@ The following statusline elements can be configured:
 [^1]: By default, a progress spinner is shown in the statusline beside the file path.
 
 [^2]: You may also have to activate them in the language server config for them to appear, not just in Helix. Inlay hints in Helix are still being improved on and may be a little bit laggy/janky under some circumstances. Please report any bugs you see so we can fix them!
+
+### `[editor.inline-blame]` Section
+
+Inline blame is virtual text that appears at the end of a line, displaying information about the most recent commit that affected this line.
+
+| Key     | Description                                | Default |
+| ------- | ------------------------------------------ | ------- |
+| `show` | When to show inline blame | `"never"` |
+| `auto-fetch` | Automatically fetch blame information in the background | `false` |
+| `format` | Inline blame message format | `"{author}, {time-ago} • {title} • {commit}"` |
+
+`show` can be one of the following:
+- `"all-lines"`: Inline blame is on every line.
+- `"cursor-line"`: Inline blame is only on the line of the primary cursor.
+- `"never"`: Inline blame is hidden.
+
+With `auto-fetch` set to `false`, blame for the current file is fetched only when explicitly requested, such as when using `space + B` to display the blame for the line of the cursor. There may be a little delay when loading the blame.
+
+When `auto-fetch` is `true`, blame is loaded in the background. With `false`, use `Space B` to fetch it before annotations can appear. Queries are debounced and at most two background computations run at once.
+
+After edits, annotations are hidden until blame has been mapped to the new buffer. Added or replaced lines have no committed blame. Existing annotations refresh on editor interaction, checking HEAD at most once every two seconds, including after external commits or branch switches. An idle editor is not periodically redrawn.
+
+For example:
+
+```toml
+[editor.inline-blame]
+show = "cursor-line"
+auto-fetch = true
+format = "{author}, {time-ago} • {title} • {commit}"
+```
+
+The feature uses the editor's Git workspace trust setting, including when applying repository filters. Linked worktrees are supported. Without the Git build feature, manual queries report that Git support is unavailable.
+
+#### `format`
+
+Change the `format` string to customize the blame message displayed. Variables are text placeholders wrapped in curly braces: `{variable}`. The following variables are available:
+
+- `author`: The author of the commit
+- `date`: When the commit was made
+- `time-ago`: How long ago the commit was made
+- `title`: The title of the commit
+- `body`: The body of the commit
+- `commit`: The short hex SHA1 hash of the commit
+- `email`: The email of the author of the commit
 
 ### `[editor.cursor-shape]` Section
 
