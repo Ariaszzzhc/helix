@@ -59,7 +59,7 @@ The following options all belong to `[devicons]`:
 | `picker` | `true` | Show file and directory icons in file, directory, and buffer pickers, and directory previews. Icons do not participate in fuzzy matching. |
 | `bufferline` | `true` | Show file icons in the bufferline, when the bufferline itself is enabled. |
 | `statusline` | `true` | Show an icon before file names. If no file-name element is configured, show it before the `file-type` element instead. Existing text is preserved. |
-| `completion` | `true` | Replace completion kind names with icons. Labels, filtering, and actual color swatches are preserved. |
+| `completion` | `true` | Show kind icons before completion labels. Filtering and actual color swatches are preserved. |
 | `color` | `true` | Use icon colors. Set to `false` to inherit the surrounding UI style. |
 
 For example, to use icons everywhere except completions:

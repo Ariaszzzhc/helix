@@ -118,7 +118,8 @@ impl menu::Item for CompletionItem {
             },
         );
 
-        let kind = if data.devicons.enable && data.devicons.completion {
+        let show_icons = data.devicons.enable && data.devicons.completion;
+        let kind = if show_icons {
             let name = match self {
                 CompletionItem::Lsp(LspCompletionItem { item, .. })
                     if item.kind == Some(lsp::CompletionItemKind::COLOR) =>
@@ -143,7 +144,11 @@ impl menu::Item for CompletionItem {
             kind
         };
 
-        menu::Row::new([menu::Cell::from(label), menu::Cell::from(kind)])
+        if show_icons {
+            menu::Row::new([menu::Cell::from(kind), menu::Cell::from(label)])
+        } else {
+            menu::Row::new([menu::Cell::from(label), menu::Cell::from(kind)])
+        }
     }
 }
 
@@ -725,20 +730,21 @@ mod tests {
     }
 
     #[test]
-    fn devicons_completion_preserves_labels_and_opt_out() {
+    fn devicons_completion_puts_icons_before_labels_and_preserves_opt_out() {
         let completion = item(Some(lsp::CompletionItemKind::FUNCTION));
         let enabled = style("enable = true\n[kind]\nfunction = 'F'");
         let row = completion.format(&enabled);
-        assert_eq!(row.cells[0].content, menu::Cell::from("label").content);
-        assert_eq!(row.cells[1].content, menu::Cell::from("F").content);
+        assert_eq!(row.cells[0].content, menu::Cell::from("F").content);
+        assert_eq!(row.cells[1].content, menu::Cell::from("label").content);
         for config in ["", "enable = true\ncompletion = false"] {
             let row = completion.format(&style(config));
+            assert_eq!(row.cells[0].content, menu::Cell::from("label").content);
             assert_eq!(row.cells[1].content, menu::Cell::from("function").content);
         }
         assert_eq!(completion.filter_text(), "label");
         let unknown_item = item(None);
         let unknown = unknown_item.format(&enabled);
-        assert!(unknown.cells[1]
+        assert!(unknown.cells[0]
             .content
             .lines
             .iter()
@@ -753,7 +759,7 @@ mod tests {
         };
         lsp.item.documentation = Some(lsp::Documentation::String("#123456".into()));
         let row = completion.format(&style("enable = true\ncolor = false"));
-        let swatch = &row.cells[1].content.lines[0].0[0];
+        let swatch = &row.cells[0].content.lines[0].0[0];
         assert_eq!(swatch.content, "■");
         assert_eq!(swatch.style.fg, Some(Color::Rgb(0x12, 0x34, 0x56)));
     }
