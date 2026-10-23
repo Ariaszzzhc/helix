@@ -911,11 +911,31 @@ impl<T: 'static + Send + Sync, D: 'static + Send + Sync> Picker<T, D> {
                             dir_content.iter().take(inner.height as usize).enumerate()
                         {
                             let style = if *is_dir { directory } else { text };
+                            let mut x = inner.x;
+                            if cx.editor.devicons.enable && cx.editor.devicons.picker {
+                                let icon_path = Path::new(path.trim_end_matches('/'));
+                                let icon = if *is_dir {
+                                    cx.editor.devicons.directory(icon_path, &cx.editor.theme)
+                                } else {
+                                    cx.editor
+                                        .devicons
+                                        .file(Some(icon_path), None, &cx.editor.theme)
+                                };
+                                if !icon.glyph.is_empty() {
+                                    let spans = tui::text::Spans::from(vec![
+                                        Span::styled(icon.glyph, style.patch(icon.style)),
+                                        Span::styled(" ", style),
+                                    ]);
+                                    x = surface
+                                        .set_spans(x, inner.y + i as u16, &spans, inner.width)
+                                        .0;
+                                }
+                            }
                             surface.set_stringn(
-                                inner.x,
+                                x,
                                 inner.y + i as u16,
                                 path,
-                                inner.width as usize,
+                                inner.right().saturating_sub(x) as usize,
                                 style,
                             );
                         }

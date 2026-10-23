@@ -698,15 +698,37 @@ impl EditorView {
                 bufferline_inactive
             };
 
-            let text = format!(" {}{} ", fname, if doc.is_modified() { "[+]" } else { "" });
-            let used_width = viewport.x.saturating_sub(x);
-            let rem_width = surface.area.width.saturating_sub(used_width);
+            let rem_width = viewport.right().saturating_sub(x);
+            if editor.devicons.enable && editor.devicons.bufferline {
+                let icon = editor
+                    .devicons
+                    .file(doc.path(), doc.language_name(), &editor.theme);
+                let mut spans = vec![tui::text::Span::raw(" ")];
+                if !icon.glyph.is_empty() {
+                    spans.push(tui::text::Span::styled(
+                        icon.glyph.to_owned(),
+                        style.patch(icon.style),
+                    ));
+                    spans.push(tui::text::Span::raw(" "));
+                }
+                spans.push(tui::text::Span::raw(format!(
+                    "{}{} ",
+                    fname,
+                    if doc.is_modified() { "[+]" } else { "" }
+                )));
+                let mut spans = tui::text::Spans::from(spans);
+                for span in &mut spans.0 {
+                    span.style = style.patch(span.style);
+                }
+                x = surface.set_spans(x, viewport.y, &spans, rem_width).0;
+            } else {
+                let text = format!(" {}{} ", fname, if doc.is_modified() { "[+]" } else { "" });
+                x = surface
+                    .set_stringn(x, viewport.y, &text, rem_width as usize, style)
+                    .0;
+            }
 
-            x = surface
-                .set_stringn(x, viewport.y, &text, rem_width as usize, style)
-                .0;
-
-            if x >= surface.area.right() {
+            if x >= viewport.right() {
                 break;
             }
         }

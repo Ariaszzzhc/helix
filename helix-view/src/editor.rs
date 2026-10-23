@@ -1313,6 +1313,7 @@ pub struct Editor {
     pub autoinfo: Option<Info>,
 
     pub config: Arc<dyn DynAccess<Config>>,
+    pub devicons: Arc<crate::devicons::Config>,
     pub auto_pairs: Option<AutoPairs>,
 
     pub idle_timer: Pin<Box<Sleep>>,
@@ -1459,6 +1460,7 @@ impl Editor {
             last_completion: None,
             last_cwd: None,
             config,
+            devicons: Arc::default(),
             auto_pairs,
             exit_code: 0,
             config_events: unbounded_channel(),

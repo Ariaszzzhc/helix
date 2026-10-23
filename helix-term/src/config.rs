@@ -14,6 +14,7 @@ pub struct Config {
     pub theme: Option<theme::Config>,
     pub keys: HashMap<Mode, KeyTrie>,
     pub editor: helix_view::editor::Config,
+    pub devicons: helix_view::devicons::Config,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -22,6 +23,7 @@ pub struct ConfigRaw {
     pub theme: Option<theme::Config>,
     pub keys: Option<HashMap<Mode, KeyTrie>>,
     pub editor: Option<toml::Value>,
+    pub devicons: Option<toml::Value>,
 }
 
 impl Default for Config {
@@ -30,6 +32,7 @@ impl Default for Config {
             theme: None,
             keys: keymap::default(),
             editor: helix_view::editor::Config::default(),
+            devicons: helix_view::devicons::Config::default(),
         }
     }
 }
@@ -84,7 +87,18 @@ impl Config {
                         .map_err(ConfigLoadError::BadConfig)?,
                 };
 
+                let devicons = match (global.devicons, local.devicons) {
+                    (None, None) => helix_view::devicons::Config::default(),
+                    (None, Some(value)) | (Some(value), None) => {
+                        value.try_into().map_err(ConfigLoadError::BadConfig)?
+                    }
+                    (Some(global), Some(local)) => merge_toml_values(global, local, usize::MAX)
+                        .try_into()
+                        .map_err(ConfigLoadError::BadConfig)?,
+                };
+
                 Config {
+                    devicons,
                     theme: local.theme.or(global.theme),
                     keys,
                     editor,
@@ -101,6 +115,10 @@ impl Config {
                     merge_keys(&mut keys, keymap);
                 }
                 Config {
+                    devicons: config.devicons.map_or_else(
+                        || Ok(helix_view::devicons::Config::default()),
+                        |value| value.try_into().map_err(ConfigLoadError::BadConfig),
+                    )?,
                     theme: config.theme,
                     keys,
                     editor: config.editor.map_or_else(
@@ -197,6 +215,90 @@ mod tests {
                 ..Default::default()
             }
         );
+    }
+
+    #[test]
+    fn devicons_preserves_existing_editor_configuration() {
+        let legacy = r#"
+            theme = "onedark"
+            [editor.statusline]
+            separator = "|"
+            [editor.whitespace.characters]
+            space = "·"
+            [editor.indent-guides]
+            character = "╎"
+            [editor.soft-wrap]
+            wrap-indicator = "↪ "
+            [keys.normal]
+            C-s = ":write"
+        "#;
+        let before = Config::load_test(legacy);
+        let after = Config::load_test(&format!("{legacy}\n[devicons]\nenable = true\n"));
+        assert_eq!(before.editor, after.editor);
+        assert_eq!(before.keys, after.keys);
+        assert_eq!(before.theme, after.theme);
+        assert!(!before.devicons.enable);
+        assert!(after.devicons.enable);
+    }
+
+    #[test]
+    fn devicons_workspace_overrides_merge_individual_icon_fields() {
+        let global = r##"
+            [devicons]
+            enable = true
+            completion = false
+            [devicons.extension]
+            rs = { glyph = "R", fg = "#112233" }
+            ts = "T"
+        "##
+        .to_owned();
+        let local = r##"
+            [devicons]
+            picker = false
+            [devicons.extension]
+            rs = { fg = "#445566" }
+            custom = "C"
+        "##
+        .to_owned();
+        let config = Config::load(Ok(&global), Ok(local)).unwrap();
+        assert!(config.devicons.enable);
+        assert!(!config.devicons.picker && !config.devicons.completion);
+        let theme = &helix_view::theme::DEFAULT_THEME;
+        let icon = config
+            .devicons
+            .file(Some(std::path::Path::new("a.rs")), None, theme);
+        assert_eq!(icon.glyph, "R");
+        assert_eq!(
+            icon.style.fg,
+            Some(helix_view::theme::Color::Rgb(0x44, 0x55, 0x66))
+        );
+        assert_eq!(
+            config
+                .devicons
+                .file(Some(std::path::Path::new("a.ts")), None, theme)
+                .glyph,
+            "T"
+        );
+        assert_eq!(
+            config
+                .devicons
+                .file(Some(std::path::Path::new("a.custom")), None, theme)
+                .glyph,
+            "C"
+        );
+    }
+
+    #[test]
+    fn devicons_rejects_invalid_configuration() {
+        for invalid in [
+            "[devicons]\nenabled = true",
+            "[devicons.extension]\nrs = { glyph = 'R', colour = '#fff' }",
+            "[devicons.extension]\nrs = { fg = 'bad-color' }",
+        ] {
+            assert!(
+                Config::load(Ok(&invalid.to_owned()), Err(ConfigLoadError::default())).is_err()
+            );
+        }
     }
 
     #[test]

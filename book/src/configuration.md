@@ -33,3 +33,82 @@ signal to the Helix process, such as by using the command `pkill -USR1 hx`.
 Finally, you can have a `config.toml` and a `languages.toml` local to a project by putting it under a `.helix` directory in your repository.
 Its settings will be merged with the configuration directory and the built-in configuration.
 
+## Devicons (fork extension)
+
+This fork provides optional Nerd Font icons in file and directory pickers
+(including directory previews), the buffer picker, bufferline, statusline, and
+completion menu. Configure them in the **top-level** `[devicons]` table of
+`config.toml`:
+
+```toml
+[devicons]
+enable = true
+```
+
+Your terminal must have a Nerd Font or an appropriate symbol fallback configured.
+Icons are disabled by default, so existing configurations and the default UI keep
+their existing behavior. Existing settings such as `editor.statusline.separator`,
+`editor.whitespace.characters`, `editor.indent-guides.character`, and
+`editor.soft-wrap.wrap-indicator` remain in their original locations.
+
+The following options all belong to `[devicons]`:
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `enable` | `false` | Enable devicons. |
+| `picker` | `true` | Show file and directory icons in file, directory, and buffer pickers, and directory previews. Icons do not participate in fuzzy matching. |
+| `bufferline` | `true` | Show file icons in the bufferline, when the bufferline itself is enabled. |
+| `statusline` | `true` | Show an icon before file names. If no file-name element is configured, show it before the `file-type` element instead. Existing text is preserved. |
+| `completion` | `true` | Replace completion kind names with icons. Labels, filtering, and actual color swatches are preserved. |
+| `color` | `true` | Use icon colors. Set to `false` to inherit the surrounding UI style. |
+
+For example, to use icons everywhere except completions:
+
+```toml
+[devicons]
+enable = true
+completion = false
+```
+
+Built-in mappings cover file names, extensions, directories, and completion kinds.
+Override individual entries with a glyph string or a table with optional `glyph`
+and `fg` fields (`fg` accepts a hexadecimal color such as `"#ff8800"`). An empty
+glyph hides that icon. Glyphs may contain multiple characters, but cannot contain
+control characters or line breaks; terminal display width is used for layout.
+
+```toml
+[devicons.filename]
+"Dockerfile" = "D"
+"README.md" = { glyph = "R", fg = "#66bbff" }
+
+[devicons.extension]
+rs = { fg = "#ff8800" } # retain the built-in Rust glyph
+"blade.php" = "B"
+myformat = { glyph = "M", fg = "#88cc66" }
+
+[devicons.directory]
+assets = "A"
+default = "d" # fallback for directories without a specific mapping
+
+[devicons.kind]
+function = "f"
+struct = { glyph = "S", fg = "#bb88ff" }
+```
+
+Exact file names take precedence over extensions. Compound extensions use the
+longest recognized suffix (`blade.php` before `php`). Unknown file types fall
+back to a generic file icon; scratch buffers use the selected language where a
+matching mapping exists. Entries are case-sensitive.
+
+User `fg` overrides take precedence over theme styles, which take precedence over
+built-in colors. Theme authors can use `ui.devicons.file`,
+`ui.devicons.directory`, and `ui.devicons.kind` (or a more specific scope such as
+`ui.devicons.kind.function`) in the existing theme file. No theme changes are
+required. `color = false` disables icon styling, including these overrides;
+language-server color swatches continue to show the actual color.
+
+`:config-reload` applies changes to the bufferline and statusline immediately.
+Reopen a picker or completion menu to use the refreshed configuration and theme.
+Trusted project-local `.helix/config.toml` settings merge with global settings,
+including individual fields of icon overrides. Disabling or removing `[devicons]`
+restores the original UI without migrating any existing settings.

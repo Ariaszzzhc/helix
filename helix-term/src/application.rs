@@ -131,6 +131,7 @@ impl Application {
             handlers,
             workspace_trust,
         );
+        editor.devicons = Arc::new(config.load().devicons.clone());
         Self::load_configured_theme(&mut editor, &config.load(), &mut terminal, theme_mode);
 
         let keys = Box::new(Map::new(Arc::clone(&config), |config: &Config| {
@@ -451,6 +452,7 @@ impl Application {
             }
 
             self.terminal.reconfigure((&default_config.editor).into())?;
+            self.editor.devicons = Arc::new(default_config.devicons.clone());
             // Store new config
             self.config.store(Arc::new(default_config));
             Ok(())

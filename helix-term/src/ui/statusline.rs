@@ -440,13 +440,50 @@ where
 {
     let file_type = context.doc.language_name().unwrap_or(DEFAULT_LANGUAGE_NAME);
 
+    let config = context.editor.config();
+    let has_file_name = config
+        .statusline
+        .left
+        .iter()
+        .chain(&config.statusline.center)
+        .chain(&config.statusline.right)
+        .any(|element| {
+            matches!(
+                element,
+                StatusLineElementID::FileName
+                    | StatusLineElementID::FileBaseName
+                    | StatusLineElementID::FileAbsolutePath
+            )
+        });
+    if !has_file_name {
+        render_file_icon(context, write);
+    }
     write(context, format!(" {} ", file_type).into());
+}
+
+fn render_file_icon<'a, F>(context: &mut RenderContext<'a>, write: F)
+where
+    F: Fn(&mut RenderContext<'a>, Span<'a>) + Copy,
+{
+    if context.editor.devicons.enable && context.editor.devicons.statusline {
+        let icon = context.editor.devicons.file(
+            context.doc.path(),
+            context.doc.language_name(),
+            &context.editor.theme,
+        );
+        if !icon.glyph.is_empty() {
+            let span = super::icon_span(icon);
+            write(context, Span::raw(" "));
+            write(context, span);
+        }
+    }
 }
 
 fn render_file_name<'a, F>(context: &mut RenderContext<'a>, write: F)
 where
     F: Fn(&mut RenderContext<'a>, Span<'a>) + Copy,
 {
+    render_file_icon(context, write);
     let title = {
         let rel_path = context.doc.relative_path();
         let path = rel_path
@@ -463,6 +500,7 @@ fn render_file_absolute_path<'a, F>(context: &mut RenderContext<'a>, write: F)
 where
     F: Fn(&mut RenderContext<'a>, Span<'a>) + Copy,
 {
+    render_file_icon(context, write);
     let title = {
         let path = context
             .doc
@@ -504,6 +542,7 @@ fn render_file_base_name<'a, F>(context: &mut RenderContext<'a>, write: F)
 where
     F: Fn(&mut RenderContext<'a>, Span<'a>) + Copy,
 {
+    render_file_icon(context, write);
     let title = {
         let rel_path = context.doc.relative_path();
         let path = rel_path

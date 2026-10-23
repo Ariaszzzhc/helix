@@ -25,10 +25,16 @@ use tui::{buffer::Buffer as Surface, text::Span};
 
 use std::cmp::Reverse;
 
-impl menu::Item for CompletionItem {
-    type Data = Style;
+pub struct CompletionStyle {
+    directory: Style,
+    devicons: std::sync::Arc<helix_view::devicons::Config>,
+    theme: helix_view::Theme,
+}
 
-    fn format(&self, dir_style: &Self::Data) -> menu::Row<'_> {
+impl menu::Item for CompletionItem {
+    type Data = CompletionStyle;
+
+    fn format(&self, data: &Self::Data) -> menu::Row<'_> {
         let deprecated = match self {
             CompletionItem::Lsp(LspCompletionItem { item, .. }) => {
                 item.deprecated.unwrap_or_default()
@@ -105,12 +111,37 @@ impl menu::Item for CompletionItem {
             label,
             if deprecated {
                 Style::default().add_modifier(Modifier::CROSSED_OUT)
-            } else if kind.0[0].content == "folder" {
-                *dir_style
+            } else if kind.0.first().is_some_and(|span| span.content == "folder") {
+                data.directory
             } else {
                 Style::default()
             },
         );
+
+        let kind = if data.devicons.enable && data.devicons.completion {
+            let name = match self {
+                CompletionItem::Lsp(LspCompletionItem { item, .. })
+                    if item.kind == Some(lsp::CompletionItemKind::COLOR) =>
+                {
+                    "color"
+                }
+                _ => kind.0.first().map_or("", |span| span.content.as_ref()),
+            };
+            if name.is_empty() {
+                kind
+            } else {
+                let mut icon = data.devicons.kind(name, &data.theme);
+                // Keep the language server's actual color swatch.
+                if name == "color" {
+                    if let Some(swatch) = kind.0.last().filter(|_| kind.0.len() > 1) {
+                        icon.style = icon.style.patch(swatch.style);
+                    }
+                }
+                Spans::from(super::icon_span(icon))
+            }
+        } else {
+            kind
+        };
 
         menu::Row::new([menu::Cell::from(label), menu::Cell::from(kind)])
     }
@@ -133,10 +164,14 @@ impl Completion {
         let preview_completion_insert = editor.config().preview_completion_insert;
         let replace_mode = editor.config().completion_replace;
 
-        let dir_style = editor.theme.get("ui.text.directory");
+        let style = CompletionStyle {
+            directory: editor.theme.get("ui.text.directory"),
+            devicons: editor.devicons.clone(),
+            theme: editor.theme.clone(),
+        };
 
         // Then create the menu
-        let menu = Menu::new(items, dir_style, move |editor: &mut Editor, item, event| {
+        let menu = Menu::new(items, style, move |editor: &mut Editor, item, event| {
             let (view, doc) = current!(editor);
 
             macro_rules! language_server {
@@ -661,4 +696,65 @@ fn completion_changes(transaction: &Transaction, trigger_offset: usize) -> Vec<C
         .changes_iter()
         .filter(|(start, end, _)| (*start..=*end).contains(&trigger_offset))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui::menu::Item;
+
+    fn item(kind: Option<lsp::CompletionItemKind>) -> CompletionItem {
+        CompletionItem::Lsp(LspCompletionItem {
+            item: lsp::CompletionItem {
+                label: "label".into(),
+                kind,
+                ..Default::default()
+            },
+            provider: Default::default(),
+            resolved: false,
+            provider_priority: 0,
+        })
+    }
+
+    fn style(config: &str) -> CompletionStyle {
+        CompletionStyle {
+            directory: Style::default().fg(Color::Blue),
+            devicons: std::sync::Arc::new(toml::from_str(config).unwrap()),
+            theme: helix_view::theme::DEFAULT_THEME.clone(),
+        }
+    }
+
+    #[test]
+    fn devicons_completion_preserves_labels_and_opt_out() {
+        let completion = item(Some(lsp::CompletionItemKind::FUNCTION));
+        let enabled = style("enable = true\n[kind]\nfunction = 'F'");
+        let row = completion.format(&enabled);
+        assert_eq!(row.cells[0].content, menu::Cell::from("label").content);
+        assert_eq!(row.cells[1].content, menu::Cell::from("F").content);
+        for config in ["", "enable = true\ncompletion = false"] {
+            let row = completion.format(&style(config));
+            assert_eq!(row.cells[1].content, menu::Cell::from("function").content);
+        }
+        assert_eq!(completion.filter_text(), "label");
+        let unknown_item = item(None);
+        let unknown = unknown_item.format(&enabled);
+        assert!(unknown.cells[1]
+            .content
+            .lines
+            .iter()
+            .all(|line| line.0.iter().all(|span| span.content.is_empty())));
+    }
+
+    #[test]
+    fn devicons_completion_preserves_actual_color_swatch() {
+        let mut completion = item(Some(lsp::CompletionItemKind::COLOR));
+        let CompletionItem::Lsp(ref mut lsp) = completion else {
+            unreachable!()
+        };
+        lsp.item.documentation = Some(lsp::Documentation::String("#123456".into()));
+        let row = completion.format(&style("enable = true\ncolor = false"));
+        let swatch = &row.cells[1].content.lines[0].0[0];
+        assert_eq!(swatch.content, "■");
+        assert_eq!(swatch.style.fg, Some(Color::Rgb(0x12, 0x34, 0x56)));
+    }
 }

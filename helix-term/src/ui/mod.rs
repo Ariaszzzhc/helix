@@ -214,6 +214,8 @@ fn get_excluded_types() -> ignore::types::Types {
 pub struct FilePickerData {
     root: PathBuf,
     directory_style: Style,
+    devicons: std::sync::Arc<helix_view::devicons::Config>,
+    theme: helix_view::Theme,
 }
 type FilePicker = Picker<PathBuf, FilePickerData>;
 
@@ -225,6 +227,8 @@ pub fn file_picker(editor: &Editor, root: PathBuf) -> FilePicker {
     let data = FilePickerData {
         root: root.clone(),
         directory_style: editor.theme.get("ui.text.directory"),
+        devicons: editor.devicons.clone(),
+        theme: editor.theme.clone(),
     };
 
     let now = Instant::now();
@@ -258,7 +262,17 @@ pub fn file_picker(editor: &Editor, root: PathBuf) -> FilePicker {
         });
     log::debug!("file_picker init {:?}", Instant::now().duration_since(now));
 
-    let columns = [PickerColumn::new(
+    let mut columns = Vec::new();
+    if data.devicons.enable && data.devicons.picker {
+        columns.push(
+            PickerColumn::new("", |item: &PathBuf, data: &FilePickerData| {
+                icon_span(data.devicons.file(Some(item), None, &data.theme)).into()
+            })
+            .without_filtering(),
+        );
+    }
+    let primary_column = columns.len();
+    columns.push(PickerColumn::new(
         "path",
         |item: &PathBuf, data: &FilePickerData| {
             let path = item.strip_prefix(&data.root).unwrap_or(item);
@@ -276,17 +290,23 @@ pub fn file_picker(editor: &Editor, root: PathBuf) -> FilePicker {
             spans.push(Span::raw(filename));
             Spans::from(spans).into()
         },
-    )];
-    let picker = Picker::new(columns, 0, [], data, move |cx, path: &PathBuf, action| {
-        if let Err(e) = cx.editor.open(path, action) {
-            let err = if let Some(err) = e.source() {
-                format!("{}", err)
-            } else {
-                format!("unable to open \"{}\"", path.display())
-            };
-            cx.editor.set_error(err);
-        }
-    })
+    ));
+    let picker = Picker::new(
+        columns,
+        primary_column,
+        [],
+        data,
+        move |cx, path: &PathBuf, action| {
+            if let Err(e) = cx.editor.open(path, action) {
+                let err = if let Some(err) = e.source() {
+                    format!("{}", err)
+                } else {
+                    format!("unable to open \"{}\"", path.display())
+                };
+                cx.editor.set_error(err);
+            }
+        },
+    )
     .with_preview(|_editor, path| Some((path.as_path().into(), None)));
     let injector = picker.injector();
     let timeout = std::time::Instant::now() + std::time::Duration::from_millis(30);
@@ -313,28 +333,59 @@ pub fn file_picker(editor: &Editor, root: PathBuf) -> FilePicker {
     picker
 }
 
-type FileExplorer = Picker<(PathBuf, bool), (PathBuf, Style)>;
+pub(crate) fn icon_span(icon: helix_view::devicons::Icon<'_>) -> Span<'static> {
+    Span::styled(icon.glyph.to_owned(), icon.style)
+}
+
+type FileExplorer = Picker<(PathBuf, bool), FilePickerData>;
 
 pub fn file_explorer(root: PathBuf, editor: &Editor) -> Result<FileExplorer, std::io::Error> {
     let directory_style = editor.theme.get("ui.text.directory");
     let directory_content = directory_content(&root, editor)?;
 
-    let columns = [PickerColumn::new(
+    let data = FilePickerData {
+        root,
+        directory_style,
+        devicons: editor.devicons.clone(),
+        theme: editor.theme.clone(),
+    };
+    let mut columns = Vec::new();
+    if data.devicons.enable && data.devicons.picker {
+        columns.push(
+            PickerColumn::new(
+                "",
+                |(path, is_dir): &(PathBuf, bool), data: &FilePickerData| {
+                    icon_span(if *is_dir {
+                        data.devicons.directory(path, &data.theme)
+                    } else {
+                        data.devicons.file(Some(path), None, &data.theme)
+                    })
+                    .into()
+                },
+            )
+            .without_filtering(),
+        );
+    }
+    let primary_column = columns.len();
+    columns.push(PickerColumn::new(
         "path",
-        |(path, is_dir): &(PathBuf, bool), (root, directory_style): &(PathBuf, Style)| {
-            let name = path.strip_prefix(root).unwrap_or(path).to_string_lossy();
+        |(path, is_dir): &(PathBuf, bool), data: &FilePickerData| {
+            let name = path
+                .strip_prefix(&data.root)
+                .unwrap_or(path)
+                .to_string_lossy();
             if *is_dir {
-                Span::styled(format!("{}/", name), *directory_style).into()
+                Span::styled(format!("{}/", name), data.directory_style).into()
             } else {
                 name.into()
             }
         },
-    )];
+    ));
     let picker = Picker::new(
         columns,
-        0,
+        primary_column,
         directory_content,
-        (root, directory_style),
+        data,
         move |cx, (path, is_dir): &(PathBuf, bool), action| {
             if *is_dir {
                 let new_root = helix_stdx::path::normalize(path);

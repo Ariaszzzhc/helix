@@ -3317,6 +3317,7 @@ fn buffer_picker(cx: &mut Context) {
         is_modified: bool,
         is_current: bool,
         focused_at: std::time::Instant,
+        icon: Option<Span<'static>>,
     }
 
     let new_meta = |doc: &Document| BufferMeta {
@@ -3328,6 +3329,13 @@ fn buffer_picker(cx: &mut Context) {
         is_modified: doc.is_modified(),
         is_current: doc.id() == current,
         focused_at: doc.focused_at,
+        icon: (cx.editor.devicons.enable && cx.editor.devicons.picker).then(|| {
+            ui::icon_span(cx.editor.devicons.file(
+                doc.path(),
+                doc.language_name(),
+                &cx.editor.theme,
+            ))
+        }),
     };
 
     let mut items = cx
@@ -3340,7 +3348,7 @@ fn buffer_picker(cx: &mut Context) {
     // mru
     items.sort_unstable_by_key(|item| std::cmp::Reverse(item.focused_at));
 
-    let columns = [
+    let mut columns = vec![
         PickerColumn::new("id", |meta: &BufferMeta, _| meta.id.to_string().into()),
         PickerColumn::new("flags", |meta: &BufferMeta, _| {
             let mut flags = String::new();
@@ -3357,6 +3365,17 @@ fn buffer_picker(cx: &mut Context) {
         }),
     ];
 
+    if cx.editor.devicons.enable && cx.editor.devicons.picker {
+        columns.insert(
+            2,
+            PickerColumn::new("", |meta: &BufferMeta, _| {
+                meta.icon.clone().unwrap_or_else(|| Span::raw("")).into()
+            })
+            .without_filtering(),
+        );
+    }
+    let primary_column = columns.len() - 1;
+
     let initial_cursor = if cx
         .editor
         .config()
@@ -3372,7 +3391,7 @@ fn buffer_picker(cx: &mut Context) {
 
     let picker = Picker::new(
         columns,
-        2,
+        primary_column,
         items,
         PathStyleConfig::new(&cx.editor.theme),
         |cx, meta, action| {
