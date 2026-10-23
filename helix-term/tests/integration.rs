@@ -18,6 +18,7 @@ mod test {
     mod auto_pairs;
     #[cfg(feature = "git")]
     mod blame;
+    mod breadcrumb;
     mod command_line;
     mod commands;
     mod devicons;

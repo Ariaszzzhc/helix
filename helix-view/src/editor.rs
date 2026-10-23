@@ -406,6 +406,8 @@ pub struct Config {
     pub file_explorer: FileExplorerConfig,
     /// Configuration of the statusline elements
     pub statusline: StatusLineConfig,
+    /// Interactive file and symbol breadcrumbs above each view.
+    pub breadcrumb: crate::breadcrumb::Config,
     /// Shape for cursor in each mode
     pub cursor_shape: CursorShapeConfig,
     /// Set to `true` to override automatic detection of terminal truecolor support in the event of a false negative. Defaults to `false`.
@@ -1245,6 +1247,7 @@ impl Default for Config {
             file_picker: FilePickerConfig::default(),
             file_explorer: FileExplorerConfig::default(),
             statusline: StatusLineConfig::default(),
+            breadcrumb: crate::breadcrumb::Config::default(),
             cursor_shape: CursorShapeConfig::default(),
             true_color: false,
             undercurl: false,
@@ -1671,7 +1674,10 @@ impl Editor {
 
     /// Refreshes the language server for a given document
     pub fn refresh_language_servers(&mut self, doc_id: DocumentId) {
-        self.launch_language_servers(doc_id)
+        self.launch_language_servers(doc_id);
+        if self.config().breadcrumb.visible() && self.config().breadcrumb.symbols {
+            helix_event::send_blocking(&self.handlers.breadcrumb, doc_id);
+        }
     }
 
     /// moves/renames a path, invoking any event handlers (currently only lsp)
@@ -1962,6 +1968,7 @@ impl Editor {
             let doc = doc_mut!(self, &view.doc);
             view.sync_changes(doc);
             view.gutters = config.gutters.clone();
+            view.breadcrumb = config.breadcrumb.visible();
             view.ensure_cursor_in_view(doc, config.scrolloff)
         }
     }

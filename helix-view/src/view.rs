@@ -146,6 +146,8 @@ pub struct ViewPosition {
 pub struct View {
     pub id: ViewId,
     pub area: Rect,
+    /// Whether this view reserves a row for breadcrumbs.
+    pub breadcrumb: bool,
     pub doc: DocumentId,
     pub jumps: JumpList,
     // documents accessed from this view from the oldest one to last viewed one
@@ -189,6 +191,7 @@ impl View {
         Self {
             id: ViewId::default(),
             doc,
+            breadcrumb: false,
             area: Rect::default(), // will get calculated upon inserting into tree
             jumps: JumpList::new((doc, Selection::point(0))), // TODO: use actual sel
             docs_access_history: Vec::new(),
@@ -219,12 +222,22 @@ impl View {
         first_line..last_line
     }
 
+    pub fn breadcrumb_height(&self) -> u16 {
+        u16::from(self.breadcrumb && self.area.height > 2)
+    }
+
+    pub fn text_area(&self) -> Rect {
+        self.area.clip_top(self.breadcrumb_height())
+    }
+
     pub fn inner_area(&self, doc: &Document) -> Rect {
-        self.area.clip_left(self.gutter_offset(doc)).clip_bottom(1) // -1 for statusline
+        self.text_area()
+            .clip_left(self.gutter_offset(doc))
+            .clip_bottom(1) // -1 for statusline
     }
 
     pub fn inner_height(&self) -> usize {
-        self.area.clip_bottom(1).height.into() // -1 for statusline
+        self.text_area().clip_bottom(1).height.into() // -1 for statusline
     }
 
     pub fn inner_width(&self, doc: &Document) -> u16 {
@@ -644,7 +657,7 @@ impl View {
     /// Returns None if coordinates are not on the gutter.
     pub fn gutter_coords_at_screen_coords(&self, row: u16, column: u16) -> Option<Position> {
         // 1 for status
-        if row < self.area.top() || row >= self.area.bottom() {
+        if row < self.text_area().top() || row >= self.area.bottom() {
             return None;
         }
 
@@ -653,7 +666,7 @@ impl View {
         }
 
         Some(Position::new(
-            (row - self.area.top()) as usize,
+            (row - self.text_area().top()) as usize,
             (column - self.area.left()) as usize,
         ))
     }

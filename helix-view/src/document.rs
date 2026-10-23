@@ -222,6 +222,10 @@ pub struct Document {
 
     /// Annotations for LSP document color swatches
     pub color_swatches: Option<DocumentColorSwatches>,
+    /// Versioned symbol tree shared by all breadcrumb views.
+    pub breadcrumb_symbols: std::sync::Arc<Vec<crate::breadcrumb::Symbol>>,
+    pub breadcrumb_version: Option<i32>,
+    pub breadcrumb_controller: TaskController,
     /// Cached LSP document links for navigation (e.g. goto_file).
     pub document_links: Vec<DocumentLink>,
     // NOTE: ideally this would live on the handler for color swatches. This is blocked on a
@@ -778,6 +782,9 @@ impl Document {
             document_highlights: HashMap::new(),
             code_action_hints: HashSet::new(),
             color_swatches: None,
+            breadcrumb_symbols: std::sync::Arc::default(),
+            breadcrumb_version: None,
+            breadcrumb_controller: TaskController::new(),
             document_links: Vec::new(),
             color_swatch_controller: TaskController::new(),
             is_welcome: false,
@@ -1382,6 +1389,9 @@ impl Document {
         language_config: Option<Arc<syntax::config::LanguageConfiguration>>,
         loader: &syntax::Loader,
     ) {
+        self.breadcrumb_controller.cancel();
+        self.breadcrumb_symbols = Arc::default();
+        self.breadcrumb_version = None;
         self.language = language_config;
         self.syntax = self.language.as_ref().and_then(|config| {
             Syntax::new(self.text.slice(..), config.language(), loader)

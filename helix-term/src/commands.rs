@@ -409,6 +409,7 @@ impl MappableCommand {
         code_action, "Perform code action",
         buffer_picker, "Open buffer picker",
         jumplist_picker, "Open jumplist picker",
+        breadcrumb, "Focus file and symbol breadcrumbs",
         symbol_picker, "Open symbol picker",
         syntax_symbol_picker, "Open symbol picker from syntax information",
         lsp_or_syntax_symbol_picker, "Open symbol picker from LSP or syntax information",
@@ -7263,5 +7264,11 @@ fn lsp_or_syntax_workspace_symbol_picker(cx: &mut Context) {
         lsp::workspace_symbol_picker(cx);
     } else {
         syntax_workspace_symbol_picker(cx);
+    }
+}
+
+fn breadcrumb(cx: &mut Context) {
+    if let Some(navigator) = crate::ui::breadcrumb::Navigator::new(cx.editor, view!(cx.editor).id) {
+        cx.push_layer(Box::new(navigator));
     }
 }

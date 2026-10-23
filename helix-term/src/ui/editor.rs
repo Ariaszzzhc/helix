@@ -175,7 +175,7 @@ impl EditorView {
                 editor,
                 doc,
                 view,
-                view.area,
+                view.text_area(),
                 theme,
                 is_focused & self.terminal_focused,
                 &mut decorations,
@@ -241,6 +241,8 @@ impl EditorView {
         {
             Self::render_diagnostics(doc, view, inner, surface, theme);
         }
+
+        super::breadcrumb::render(editor, view, surface);
 
         let statusline_area = view
             .area
@@ -972,9 +974,9 @@ impl EditorView {
             {
                 let area = Rect::new(
                     inner_area.x + (col - view_offset.horizontal_offset) as u16,
-                    view.area.y,
+                    inner_area.y,
                     1,
-                    view.area.height,
+                    inner_area.height,
                 );
                 if is_primary {
                     surface.set_style(area, primary_style)
@@ -1294,6 +1296,15 @@ impl EditorView {
                     .map(|coords| (coords, view.id))
             })
         };
+
+        if config.mouse && kind == MouseEventKind::Down(MouseButton::Left) {
+            if let Some(navigator) = super::breadcrumb::clicked(cxt.editor, row, column) {
+                cxt.editor.focus(navigator.view);
+                return EventResult::Consumed(Some(Box::new(move |compositor, _| {
+                    compositor.push(Box::new(navigator));
+                })));
+            }
+        }
 
         match kind {
             MouseEventKind::Down(MouseButton::Left) => {

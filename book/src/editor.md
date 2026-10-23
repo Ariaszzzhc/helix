@@ -101,6 +101,64 @@ primary-paste = { command = "tee",  args = ["test-primary.txt"] } # optional
 
 For custom commands the contents of the yank/paste is communicated over stdin/stdout.
 
+### `[editor.breadcrumb]` Section
+
+Shows a row of file path components and the symbols containing the primary cursor
+at the top of each view. Disabled by default.
+
+```toml
+[editor.breadcrumb]
+enable = true
+file-path = true
+symbols = true
+```
+
+| Key | Description | Default |
+| --- | --- | --- |
+| `enable` | Enable interactive breadcrumbs in each view | `false` |
+| `file-path` | Show the path relative to the document's workspace root | `true` |
+| `symbols` | Show the enclosing symbol hierarchy | `true` |
+
+Symbols come from the first language server supporting document symbols, with
+Tree-sitter tags as a fallback. Available levels depend on the language server
+and the language's tags queries. Flat server responses use syntax ranges when
+available; otherwise only containment supported by the reported ranges is shown.
+Cursor movement uses cached symbols; edits debounce symbol refreshes. Unsaved
+buffers show their buffer name. Ancestors collapse into `…` when space is limited;
+click the collapsed segment to choose a hidden level. Very small views omit the
+row to leave space for editing. Disabling both `file-path` and `symbols` also
+removes the row.
+
+Press `Space-;` (`breadcrumb`) to focus the innermost segment, then:
+
+| Key | Action |
+| --- | --- |
+| `h` / `l`, `Left` / `Right` | Focus the previous / next segment |
+| `0` / `$`, `Home` / `End` | Focus the first / last segment |
+| `j`, `Down`, `Enter` | Open the focused segment's siblings |
+| `Esc`, `Ctrl-c` | Return to editing |
+
+The navigation menu opens in browse mode with the current item selected, without
+an extra path heading or search field. `j` / `k`, `Ctrl-n` / `Ctrl-p`, or
+`Down` / `Up` move the selection. Press `/` to open the fuzzy-filter field; while
+filtering, ordinary characters (including `j` and `k`) enter text. `Esc` clears
+the filter and restores the selection from before filtering. `Tab` enters
+a directory or a symbol's children; on the current file it opens top-level
+symbols. `Shift-Tab` goes to the parent level. `Enter` enters a directory, opens
+a file, or jumps to a symbol's name. A symbol jump is recorded in the jumplist,
+so `Ctrl-o` returns to the previous position. Browsing does not move the editing
+cursor. In browse mode, `Esc` closes the menu and returns focus to the row;
+another `Esc` returns to editing. `Ctrl-c` exits navigation directly.
+
+With `editor.mouse` enabled, click a segment to open its menu and click an item
+to enter a directory or confirm a file/symbol. Clicking outside closes navigation.
+Directory menus follow the file explorer's filtering settings, without flattening
+directories. Set `devicons.enable = true` and `devicons.breadcrumb = true` to
+show file, directory, and symbol-kind icons in the row and navigation menus.
+Icons use the existing devicon mappings and colors and do not affect filtering.
+Breadcrumb colors use `ui.breadcrumb`, `ui.breadcrumb.focused` and
+`ui.breadcrumb.separator`, falling back to existing UI styles.
+
 ### `[editor.statusline]` Section
 
 Allows configuring the statusline at the bottom of the editor.

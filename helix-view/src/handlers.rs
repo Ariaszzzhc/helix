@@ -37,6 +37,7 @@ pub struct Handlers {
     pub completions: CompletionHandler,
     pub signature_hints: Sender<lsp::SignatureHelpEvent>,
     pub auto_save: Sender<AutoSaveEvent>,
+    pub breadcrumb: Sender<DocumentId>,
     pub document_colors: Sender<lsp::DocumentColorsEvent>,
     pub blame: Sender<BlameEvent>,
     pub document_links: Sender<lsp::DocumentLinksEvent>,

@@ -82,9 +82,9 @@ also support TOML, JSON and JSONC.
 ## Devicons (fork extension)
 
 This fork provides optional Nerd Font icons in file and directory pickers
-(including directory previews), the buffer picker, bufferline, statusline, and
-completion menu. Configure them in the **top-level** `[devicons]` table of
-`config.toml`:
+(including directory previews), the buffer picker, bufferline, statusline,
+breadcrumbs, and completion menu. Configure them in the **top-level** `[devicons]`
+table of `config.toml`:
 
 ```toml
 [devicons]
@@ -104,6 +104,7 @@ The following options all belong to `[devicons]`:
 | `enable` | `false` | Enable devicons. |
 | `picker` | `true` | Show file and directory icons in file, directory, and buffer pickers, and directory previews. Icons do not participate in fuzzy matching. |
 | `bufferline` | `true` | Show file icons in the bufferline, when the bufferline itself is enabled. |
+| `breadcrumb` | `true` | Show file, directory, and symbol-kind icons in breadcrumbs and their navigation menus. Requires `editor.breadcrumb.enable`. |
 | `statusline` | `true` | Show an icon before file names. If no file-name element is configured, show it before the `file-type` element instead. Existing text is preserved. |
 | `completion` | `true` | Show kind icons before completion labels. Filtering and actual color swatches are preserved. |
 | `color` | `true` | Use icon colors. Set to `false` to inherit the surrounding UI style. |
@@ -116,7 +117,7 @@ enable = true
 completion = false
 ```
 
-Built-in mappings cover file names, extensions, directories, and completion kinds.
+Built-in mappings cover file names, extensions, directories, and symbol/completion kinds.
 Override individual entries with a glyph string or a table with optional `glyph`
 and `fg` fields (`fg` accepts a hexadecimal color such as `"#ff8800"`). An empty
 glyph hides that icon. Glyphs may contain multiple characters, but cannot contain
@@ -153,8 +154,8 @@ built-in colors. Theme authors can use `ui.devicons.file`,
 required. `color = false` disables icon styling, including these overrides;
 language-server color swatches continue to show the actual color.
 
-`:config-reload` applies changes to the bufferline and statusline immediately.
-Reopen a picker or completion menu to use the refreshed configuration and theme.
+`:config-reload` applies changes to the bufferline, statusline, and breadcrumb row immediately.
+Reopen a picker, breadcrumb navigation menu, or completion menu to use the refreshed configuration and theme.
 Trusted project-local `.helix/config.toml` settings merge with global settings,
 including individual fields of icon overrides. Disabling or removing `[devicons]`
 restores the original icon-free UI without migrating any existing settings.
