@@ -356,6 +356,54 @@ async fn mouse_and_keyboard_share_file_navigation_and_split_geometry() -> anyhow
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn completion_preview_and_abort_refresh_symbol_versions() -> anyhow::Result<()> {
+    let root = tempfile::tempdir()?;
+    let path = root.path().join("one.rs");
+    std::fs::write(&path, SOURCE)?;
+    let mut app = build(&path)?;
+    let view_id = app.editor.tree.focus;
+    let id = app.editor.tree.get(view_id).doc;
+    let savepoint = {
+        let (view, doc) = helix_view::current!(app.editor);
+        doc.savepoint(view)
+    };
+    for preview in [true, false] {
+        if preview {
+            app.editor.last_completion = Some(helix_view::editor::CompleteAction::Selected {
+                savepoint: savepoint.clone(),
+            });
+            let doc = app.editor.document_mut(id).unwrap();
+            let position = SOURCE.find("first").unwrap();
+            let transaction = Transaction::change(
+                doc.text(),
+                [(position, position + 5, Some("preview".into()))].into_iter(),
+            );
+            doc.apply_temporary(&transaction, view_id);
+        } else {
+            app.editor.last_completion = None;
+            let (view, doc) = helix_view::current!(app.editor);
+            doc.restore(view, &savepoint, false);
+        }
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                run_event_loop_until_idle(&mut app).await;
+                let doc = app.editor.document(id).unwrap();
+                if doc.breadcrumb_version == Some(doc.version()) {
+                    break;
+                }
+                app.editor.reset_idle_timer();
+            }
+        })
+        .await?;
+        assert_eq!(
+            app.editor.document(id).unwrap().breadcrumb_symbols[0].children[0].name,
+            if preview { "preview" } else { "first" }
+        );
+    }
+    test_key_sequence(&mut app, Some(":qa!<ret>"), None, true).await
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn edited_symbols_are_invalidated_and_rebuilt_for_the_current_version() -> anyhow::Result<()>
 {
     let root = tempfile::tempdir()?;

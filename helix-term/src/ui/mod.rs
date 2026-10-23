@@ -3,6 +3,7 @@ mod completion;
 mod document;
 pub(crate) mod editor;
 mod info;
+pub(crate) mod kind;
 pub mod lsp;
 mod markdown;
 pub mod menu;

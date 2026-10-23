@@ -1,3 +1,4 @@
+use crate::ui::kind::{scope_for_name, scope_style};
 use std::{collections::HashMap, ops::Range, sync::Arc};
 
 use arc_swap::ArcSwap;
@@ -139,32 +140,6 @@ impl Highlighter {
         };
         match_highlights(prepared, &self.filter.read(), theme)
     }
-}
-
-pub(super) fn scope_for_name(kind: &str) -> &'static str {
-    match kind {
-        "function" | "method" => "function",
-        "constructor" => "constructor",
-        "class" | "interface" | "struct" | "type_param" => "type",
-        "enum" => "type.enum",
-        "enum_member" => "type.enum.variant",
-        "module" | "namespace" | "package" => "namespace",
-        "field" | "property" => "variable.other.member",
-        "constant" | "value" => "constant",
-        "keyword" => "keyword",
-        "operator" => "operator",
-        "snippet" => "special",
-        "folder" | "file" => "ui.text.directory",
-        "text" | "word" => "string",
-        _ => "variable",
-    }
-}
-
-pub(super) fn scope_style(theme: &Theme, scope: &str) -> Style {
-    theme
-        .try_get(scope)
-        .or_else(|| theme.try_get("variable"))
-        .unwrap_or_default()
 }
 
 fn kind_scope(kind: Option<lsp::CompletionItemKind>) -> &'static str {

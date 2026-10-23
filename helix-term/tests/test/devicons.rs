@@ -127,7 +127,7 @@ async fn file_picker_icons_do_not_participate_in_fuzzy_matching() -> anyhow::Res
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn completion_menu_keeps_token_colors_on_the_selected_row() -> anyhow::Result<()> {
+async fn highlighted_menus_keep_token_colors_on_the_selected_row() -> anyhow::Result<()> {
     use helix_term::ui::menu::{Cell, Item, Row};
     use tui::text::{Span, Spans};
 
@@ -152,6 +152,7 @@ async fn completion_menu_keeps_token_colors_on_the_selected_row() -> anyhow::Res
     app.editor.theme = helix_view::Theme::from(toml::from_str::<toml::Value>(indoc! {r##"
         "ui.menu" = { fg = "#333333", bg = "#eeeeee" }
         "ui.menu.selected" = { fg = "#00ff00", bg = "#112233" }
+        "ui.text.focus" = { fg = "#00ff00", bg = "#112233" }
     "##})?);
     let mut jobs = Jobs::new();
     let mut cx = Context {
@@ -187,6 +188,33 @@ async fn completion_menu_keeps_token_colors_on_the_selected_row() -> anyhow::Res
         assert!(!surface.content[offset + 2]
             .modifier
             .contains(Modifier::BOLD));
+
+        let mut picker = ui::Picker::new(
+            [ui::PickerColumn::new("name", |_: &&str, _: &()| {
+                Span::styled("find", Style::default().fg(Color::Rgb(255, 0, 0))).into()
+            })],
+            0,
+            ["find"],
+            (),
+            |_, _, _| {},
+        )
+        .preserve_highlight_colors(preserve);
+        let mut surface = Buffer::empty(Rect::new(0, 0, 40, 8));
+        picker.render(surface.area, &mut surface, &mut cx);
+        let cell = surface
+            .content
+            .iter()
+            .find(|cell| &*cell.symbol == "f")
+            .unwrap();
+        assert_eq!(
+            cell.fg,
+            if preserve {
+                Color::Rgb(255, 0, 0)
+            } else {
+                Color::Rgb(0, 255, 0)
+            }
+        );
+        assert_eq!(cell.bg, Color::Rgb(0x11, 0x22, 0x33));
     }
     app.editor.theme = original_theme;
     test_key_sequence(&mut app, None, None, false).await

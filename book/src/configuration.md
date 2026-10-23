@@ -102,7 +102,7 @@ The following options all belong to `[devicons]`:
 | Key | Default | Description |
 | --- | --- | --- |
 | `enable` | `false` | Enable devicons. |
-| `picker` | `true` | Show file and directory icons in file, directory, and buffer pickers, and directory previews. Icons do not participate in fuzzy matching. |
+| `picker` | `true` | Show file and directory icons in file, directory, and buffer pickers and directory previews, plus kind icons in document and workspace symbol pickers. Icons do not participate in fuzzy matching. |
 | `bufferline` | `true` | Show file icons in the bufferline, when the bufferline itself is enabled. |
 | `breadcrumb` | `true` | Show file, directory, and symbol-kind icons in breadcrumbs and their navigation menus. Requires `editor.breadcrumb.enable`. |
 | `statusline` | `true` | Show an icon before file names. If no file-name element is configured, show it before the `file-type` element instead. Existing text is preserved. |
@@ -161,3 +161,12 @@ including individual fields of icon overrides. Disabling or removing `[devicons]
 restores the original icon-free UI without migrating any existing settings.
 Completion highlighting is configured independently in
 [`[editor]`](editor.md#completion-label-highlighting).
+
+Document (`Space s`) and workspace (`Space S`) symbol pickers use syntax-theme
+colors for symbol names and kinds, including the selected row. With picker icons
+enabled, the kind column displays an icon before the name; otherwise it retains
+the textual kind. Symbol colors work independently of devicons and completion
+highlighting. Container names use the theme's comment style.
+Nested document symbols display their immediate parent's name in the container
+column; top-level symbols have no container. Flat LSP responses retain the
+container names supplied by the server.

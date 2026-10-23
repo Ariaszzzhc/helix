@@ -218,12 +218,17 @@ impl<T, D> Column<T, D> {
         }
     }
 
+    pub(crate) fn with_filtering(mut self, filter: bool) -> Self {
+        self.filter = filter;
+        self
+    }
+
     pub fn without_filtering(mut self) -> Self {
         self.filter = false;
         self
     }
 
-    fn format<'a>(&self, item: &'a T, data: &'a D) -> Cell<'a> {
+    pub(crate) fn format<'a>(&self, item: &'a T, data: &'a D) -> Cell<'a> {
         (self.format)(item, data)
     }
 
@@ -261,6 +266,7 @@ pub struct Picker<T: 'static + Send + Sync, D: 'static> {
     default_action: Action,
 
     pub truncate_start: bool,
+    preserve_highlight_colors: bool,
     /// Caches paths to documents
     preview_cache: HashMap<Arc<Path>, CachedPreview>,
     read_buffer: Vec<u8>,
@@ -384,6 +390,7 @@ impl<T: 'static + Send + Sync, D: 'static + Send + Sync> Picker<T, D> {
             prompt,
             query,
             truncate_start: true,
+            preserve_highlight_colors: false,
             show_preview: true,
             callback_fn: Box::new(callback_fn),
             default_action: Action::Replace,
@@ -406,6 +413,12 @@ impl<T: 'static + Send + Sync, D: 'static + Send + Sync> Picker<T, D> {
             picker_version: self.version.clone(),
             _redraw: helix_event::RequestRedrawOnDrop,
         }
+    }
+
+    /// Preserve per-token foreground colors on the selected row.
+    pub fn preserve_highlight_colors(mut self, preserve: bool) -> Self {
+        self.preserve_highlight_colors = preserve;
+        self
     }
 
     pub fn truncate_start(mut self, truncate_start: bool) -> Self {
@@ -694,7 +707,10 @@ impl<T: 'static + Send + Sync, D: 'static + Send + Sync> Picker<T, D> {
         }
 
         let text_style = cx.editor.theme.get("ui.text");
-        let selected = cx.editor.theme.get("ui.text.focus");
+        let mut selected = cx.editor.theme.get("ui.text.focus");
+        if self.preserve_highlight_colors {
+            selected.fg = None;
+        }
         let highlight_style = cx.editor.theme.get("special").add_modifier(Modifier::BOLD);
 
         // -- Render the frame:

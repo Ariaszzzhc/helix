@@ -4,6 +4,7 @@ use helix_core::syntax::config::LanguageServerFeature;
 use helix_event::{cancelable_future, register_hook, AsyncHook};
 use helix_view::{
     breadcrumb,
+    editor::CompleteAction,
     events::{
         ConfigDidChange, DocumentDidChange, DocumentDidClose, DocumentDidOpen,
         LanguageServerExited, LanguageServerInitialized,
@@ -44,6 +45,13 @@ fn request(editor: &mut Editor, id: DocumentId) {
         return;
     }
     let loader = editor.syn_loader.load();
+    let preview = matches!(
+        editor.last_completion,
+        Some(CompleteAction::Selected { .. })
+    ) && editor
+        .tree
+        .try_get(editor.tree.focus)
+        .is_some_and(|view| view.doc == id);
     let Some(doc) = editor.document_mut(id) else {
         return;
     };
@@ -59,7 +67,9 @@ fn request(editor: &mut Editor, id: DocumentId) {
 
     // Use the first supporting server, as for other per-document LSP features.
     // Combining trees from multiple servers creates duplicate or conflicting chains.
-    if !config.lsp.enable {
+    // Completion previews are local ghost edits, absent from the server's text.
+    // Rebuild syntax breadcrumbs, but never apply LSP ranges to preview text.
+    if !config.lsp.enable || preview {
         return;
     }
     let Some(server) = doc
@@ -128,7 +138,9 @@ pub(super) fn register_hooks(handlers: &Handlers) {
         event.doc.breadcrumb_controller.cancel();
         event.doc.breadcrumb_version = None;
         let config = event.doc.config.load();
-        if !event.ghost_transaction && config.breadcrumb.visible() && config.breadcrumb.symbols {
+        // Aborting a completion also restores its savepoint through a ghost edit.
+        // Both the preview and the restoration need a versioned cache refresh.
+        if config.breadcrumb.visible() && config.breadcrumb.symbols {
             helix_event::send_blocking(&tx, event.doc.id());
         }
         Ok(())

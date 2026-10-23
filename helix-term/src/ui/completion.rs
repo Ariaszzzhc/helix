@@ -162,7 +162,7 @@ impl menu::Item for CompletionItem {
                 }
                 if data.devicons.color && icon.style.fg.is_none() {
                     icon.style =
-                        highlight::scope_style(&data.theme, highlight::scope_for_name(name))
+                        super::kind::scope_style(&data.theme, super::kind::scope_for_name(name))
                             .patch(icon.style);
                 }
                 Spans::from(super::icon_span(icon))

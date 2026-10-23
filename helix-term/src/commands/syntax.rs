@@ -34,6 +34,8 @@ use crate::{
 };
 
 use super::Context;
+use crate::ui::kind::SymbolStyle;
+use tui::text::Span;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TagKind {
@@ -191,16 +193,22 @@ pub fn syntax_symbol_picker(cx: &mut Context) {
     let loader = cx.editor.syn_loader.load();
     let tags = tags_iter(syntax, &loader, text, UriOrDocumentId::Id(doc.id()), None);
 
+    let style = SymbolStyle::new(cx.editor);
     let columns = vec![
-        PickerColumn::new("kind", |tag: &Tag, _| tag.kind.as_str().into()),
-        PickerColumn::new("name", |tag: &Tag, _| tag.name.as_str().into()),
+        PickerColumn::new("kind", |tag: &Tag, data: &SymbolStyle| {
+            data.kind_span(tag.kind.as_str(), tag.kind.as_str()).into()
+        })
+        .with_filtering(!style.icons()),
+        PickerColumn::new("name", |tag: &Tag, data: &SymbolStyle| {
+            Span::styled(tag.name.as_str(), data.scope(tag.kind.as_str())).into()
+        }),
     ];
 
     let picker = Picker::new(
         columns,
         1, // name
         tags,
-        (),
+        style,
         move |cx, tag, action| {
             cx.editor.switch(doc_id, action);
             let view = view_mut!(cx.editor);
@@ -214,7 +222,8 @@ pub fn syntax_symbol_picker(cx: &mut Context) {
     .with_preview(|_editor, tag| {
         Some((tag.doc.path_or_id()?, Some((tag.start_line, tag.end_line))))
     })
-    .truncate_start(false);
+    .truncate_start(false)
+    .preserve_highlight_colors(true);
 
     cx.push_layer(Box::new(overlaid(picker)));
 }
@@ -222,6 +231,7 @@ pub fn syntax_symbol_picker(cx: &mut Context) {
 pub fn syntax_workspace_symbol_picker(cx: &mut Context) {
     #[derive(Debug)]
     struct SearchState {
+        style: SymbolStyle,
         searcher_builder: SearcherBuilder,
         walk_builder: WalkBuilder,
         regex_matcher_builder: RegexMatcherBuilder,
@@ -268,6 +278,7 @@ pub fn syntax_workspace_symbol_picker(cx: &mut Context) {
     let mut rope_regex_builder = rope::RegexBuilder::new();
     rope_regex_builder.syntax(rope::Config::new().case_insensitive(config.search.smart_case));
     let state = SearchState {
+        style: SymbolStyle::new(cx.editor),
         searcher_builder,
         walk_builder,
         regex_matcher_builder,
@@ -278,8 +289,17 @@ pub fn syntax_workspace_symbol_picker(cx: &mut Context) {
     let reg = cx.register.unwrap_or('/');
     cx.editor.registers.last_search_register = reg;
     let columns = vec![
-        PickerColumn::new("kind", |tag: &Tag, _| tag.kind.as_str().into()),
-        PickerColumn::new("name", |tag: &Tag, _| tag.name.as_str().into()).without_filtering(),
+        PickerColumn::new("kind", |tag: &Tag, state: &SearchState| {
+            state
+                .style
+                .kind_span(tag.kind.as_str(), tag.kind.as_str())
+                .into()
+        })
+        .with_filtering(!state.style.icons()),
+        PickerColumn::new("name", |tag: &Tag, state: &SearchState| {
+            Span::styled(tag.name.as_str(), state.style.scope(tag.kind.as_str())).into()
+        })
+        .without_filtering(),
         PickerColumn::new("path", |tag: &Tag, state: &SearchState| {
             match &tag.doc {
                 UriOrDocumentId::Uri(uri) => {
@@ -461,7 +481,8 @@ pub fn syntax_workspace_symbol_picker(cx: &mut Context) {
         ))
     })
     .with_history_register(Some(reg))
-    .truncate_start(false);
+    .truncate_start(false)
+    .preserve_highlight_colors(true);
     cx.push_layer(Box::new(overlaid(picker)));
 }
 

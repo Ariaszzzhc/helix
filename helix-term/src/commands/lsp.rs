@@ -315,34 +315,100 @@ fn diag_picker(
     .truncate_start(false)
 }
 
-pub fn symbol_picker(cx: &mut Context) {
-    fn nested_to_flat(
-        list: &mut Vec<SymbolInformationItem>,
-        file: &lsp::TextDocumentIdentifier,
-        uri: &Uri,
-        symbol: lsp::DocumentSymbol,
-        offset_encoding: OffsetEncoding,
-    ) {
-        #[allow(deprecated)]
-        list.push(SymbolInformationItem {
-            symbol: lsp::SymbolInformation {
-                name: symbol.name,
-                kind: symbol.kind,
-                tags: symbol.tags,
-                deprecated: symbol.deprecated,
-                location: lsp::Location::new(file.uri.clone(), symbol.selection_range),
-                container_name: None,
-            },
-            location: Location {
-                uri: uri.clone(),
-                range: symbol.selection_range,
-                offset_encoding,
-            },
-        });
-        for child in symbol.children.into_iter().flatten() {
-            nested_to_flat(list, file, uri, child, offset_encoding);
-        }
+use crate::ui::kind::SymbolStyle;
+
+fn symbol_icon_kind(kind: lsp::SymbolKind) -> &'static str {
+    match kind {
+        lsp::SymbolKind::CONSTRUCTOR => "constructor",
+        lsp::SymbolKind::ENUM_MEMBER => "enum_member",
+        lsp::SymbolKind::TYPE_PARAMETER => "type_param",
+        _ => display_symbol_kind(kind),
     }
+}
+
+fn symbol_columns(
+    style: &SymbolStyle,
+    workspace: bool,
+) -> Vec<ui::PickerColumn<SymbolInformationItem, SymbolStyle>> {
+    let icons = style.devicons.enable && style.devicons.picker;
+    let kind = ui::PickerColumn::new(
+        "kind",
+        |item: &SymbolInformationItem, data: &SymbolStyle| {
+            data.kind_span(
+                symbol_icon_kind(item.symbol.kind),
+                display_symbol_kind(item.symbol.kind),
+            )
+            .into()
+        },
+    );
+    vec![
+        if icons {
+            kind.without_filtering()
+        } else {
+            kind
+        },
+        ui::PickerColumn::new(
+            "name",
+            |item: &SymbolInformationItem, data: &SymbolStyle| {
+                let mut style = data.scope(symbol_icon_kind(item.symbol.kind));
+                #[allow(deprecated)]
+                if item.symbol.deprecated.unwrap_or_default()
+                    || item
+                        .symbol
+                        .tags
+                        .as_ref()
+                        .is_some_and(|tags| tags.contains(&lsp::SymbolTag::DEPRECATED))
+                {
+                    style = style.add_modifier(helix_view::graphics::Modifier::CROSSED_OUT);
+                }
+                Span::styled(item.symbol.name.as_str(), style).into()
+            },
+        )
+        .with_filtering(!workspace),
+        ui::PickerColumn::new(
+            "container",
+            |item: &SymbolInformationItem, data: &SymbolStyle| {
+                Span::styled(
+                    item.symbol.container_name.as_deref().unwrap_or_default(),
+                    data.theme.get("comment"),
+                )
+                .into()
+            },
+        ),
+    ]
+}
+
+fn nested_to_flat(
+    list: &mut Vec<SymbolInformationItem>,
+    file: &lsp::TextDocumentIdentifier,
+    uri: &Uri,
+    symbol: lsp::DocumentSymbol,
+    offset_encoding: OffsetEncoding,
+    container_name: Option<&str>,
+) {
+    let parent_name = symbol.name.clone();
+    #[allow(deprecated)]
+    list.push(SymbolInformationItem {
+        symbol: lsp::SymbolInformation {
+            name: symbol.name,
+            kind: symbol.kind,
+            tags: symbol.tags,
+            deprecated: symbol.deprecated,
+            location: lsp::Location::new(file.uri.clone(), symbol.selection_range),
+            container_name: container_name.map(str::to_owned),
+        },
+        location: Location {
+            uri: uri.clone(),
+            range: symbol.selection_range,
+            offset_encoding,
+        },
+    });
+    for child in symbol.children.into_iter().flatten() {
+        nested_to_flat(list, file, uri, child, offset_encoding, Some(&parent_name));
+    }
+}
+
+pub fn symbol_picker(cx: &mut Context) {
     let doc = doc!(cx.editor);
 
     let mut seen_language_servers = HashSet::new();
@@ -386,6 +452,7 @@ pub fn symbol_picker(cx: &mut Context) {
                                 &doc_uri,
                                 symbol,
                                 offset_encoding,
+                                None,
                             )
                         }
                         flat_symbols
@@ -410,37 +477,22 @@ pub fn symbol_picker(cx: &mut Context) {
                 Err(err) => log::error!("Error requesting document symbols: {err}"),
             }
         }
-        let call = move |_editor: &mut Editor, compositor: &mut Compositor| {
-            let columns = [
-                ui::PickerColumn::new("kind", |item: &SymbolInformationItem, _| {
-                    display_symbol_kind(item.symbol.kind).into()
-                }),
-                // Some symbols in the document symbol picker may have a URI that isn't
-                // the current file. It should be rare though, so we concatenate that
-                // URI in with the symbol name in this picker.
-                ui::PickerColumn::new("name", |item: &SymbolInformationItem, _| {
-                    item.symbol.name.as_str().into()
-                }),
-                ui::PickerColumn::new("container", |item: &SymbolInformationItem, _| {
-                    item.symbol
-                        .container_name
-                        .as_deref()
-                        .unwrap_or_default()
-                        .into()
-                }),
-            ];
+        let call = move |editor: &mut Editor, compositor: &mut Compositor| {
+            let style = SymbolStyle::new(editor);
+            let columns = symbol_columns(&style, false);
 
             let picker = Picker::new(
                 columns,
                 1, // name column
                 symbols,
-                (),
+                style,
                 move |cx, item, action| {
                     jump_to_location(cx.editor, &item.location, action);
                 },
             )
             .with_preview(move |_editor, item| location_to_file_location(&item.location))
-            .truncate_start(false);
+            .truncate_start(false)
+            .preserve_highlight_colors(true);
 
             compositor.push(Box::new(overlaid(picker)))
         };
@@ -529,22 +581,11 @@ pub fn workspace_symbol_picker(cx: &mut Context) {
         }
         .boxed()
     };
-    let columns = [
-        ui::PickerColumn::new("kind", |item: &SymbolInformationItem, _| {
-            display_symbol_kind(item.symbol.kind).into()
-        }),
-        ui::PickerColumn::new("name", |item: &SymbolInformationItem, _| {
-            item.symbol.name.as_str().into()
-        })
-        .without_filtering(),
-        ui::PickerColumn::new("container", |item: &SymbolInformationItem, _| {
-            item.symbol
-                .container_name
-                .as_deref()
-                .unwrap_or_default()
-                .into()
-        }),
-        ui::PickerColumn::new("path", |item: &SymbolInformationItem, _| {
+    let style = SymbolStyle::new(cx.editor);
+    let mut columns = symbol_columns(&style, true);
+    columns.push(ui::PickerColumn::new(
+        "path",
+        |item: &SymbolInformationItem, _| {
             if let Some(path) = item.location.uri.as_path() {
                 path::get_relative_path(path)
                     .to_string_lossy()
@@ -553,21 +594,22 @@ pub fn workspace_symbol_picker(cx: &mut Context) {
             } else {
                 item.symbol.location.uri.to_string().into()
             }
-        }),
-    ];
+        },
+    ));
 
     let picker = Picker::new(
         columns,
         1, // name column
         [],
-        (),
+        style,
         move |cx, item, action| {
             jump_to_location(cx.editor, &item.location, action);
         },
     )
     .with_preview(|_editor, item| location_to_file_location(&item.location))
     .with_dynamic_query(get_symbols, None)
-    .truncate_start(false);
+    .truncate_start(false)
+    .preserve_highlight_colors(true);
 
     cx.push_layer(Box::new(overlaid(picker)));
 }
@@ -1514,4 +1556,126 @@ fn compute_inlay_hints_for_view(
     );
 
     Some(callback)
+}
+
+#[cfg(test)]
+mod symbol_tests {
+    use super::*;
+
+    #[test]
+    fn flattening_document_symbols_preserves_immediate_containers_and_locations() {
+        let range = serde_json::json!({
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 10, "character": 0 }
+        });
+        let selection = serde_json::json!({
+            "start": { "line": 1, "character": 4 },
+            "end": { "line": 1, "character": 10 }
+        });
+        let symbols: Vec<lsp::DocumentSymbol> = serde_json::from_value(serde_json::json!([
+            {
+                "name": "module", "kind": 2, "range": range, "selectionRange": selection,
+                "children": [
+                    {
+                        "name": "Config", "kind": 23, "range": range, "selectionRange": selection,
+                        "children": [{"name": "theme", "kind": 8, "range": range, "selectionRange": selection, "tags": [1]}]
+                    },
+                    {
+                        "name": "impl Default for Config", "kind": 19, "range": range, "selectionRange": selection,
+                        "children": [{"name": "default", "kind": 12, "range": range, "selectionRange": selection}]
+                    }
+                ]
+            },
+            {"name": "top_level", "kind": 12, "range": range, "selectionRange": selection}
+        ])).unwrap();
+        let file = lsp::TextDocumentIdentifier::new("file:///tmp/symbol.rs".parse().unwrap());
+        let uri: Uri = file.uri.clone().try_into().unwrap();
+        let mut flat = Vec::new();
+        for symbol in symbols {
+            nested_to_flat(&mut flat, &file, &uri, symbol, OffsetEncoding::Utf16, None);
+        }
+        assert_eq!(
+            flat.iter()
+                .map(|item| (
+                    item.symbol.name.as_str(),
+                    item.symbol.container_name.as_deref()
+                ))
+                .collect::<Vec<_>>(),
+            [
+                ("module", None),
+                ("Config", Some("module")),
+                ("theme", Some("Config")),
+                ("impl Default for Config", Some("module")),
+                ("default", Some("impl Default for Config")),
+                ("top_level", None),
+            ]
+        );
+        let expected_selection: lsp::Range = serde_json::from_value(selection).unwrap();
+        for item in &flat {
+            assert_eq!(item.location.uri, uri);
+            assert_eq!(item.symbol.location.uri, file.uri);
+            assert_eq!(item.location.range, expected_selection);
+            assert_eq!(item.symbol.location.range, expected_selection);
+            assert_eq!(item.location.offset_encoding, OffsetEncoding::Utf16);
+        }
+        assert_eq!(flat[2].symbol.tags, Some(vec![lsp::SymbolTag::DEPRECATED]));
+    }
+
+    #[test]
+    fn symbol_columns_use_kind_styles_with_and_without_icons() {
+        let theme: &helix_view::Theme = &helix_view::theme::DEFAULT_THEME;
+        for (kind, name, scope) in [
+            (lsp::SymbolKind::FUNCTION, "function", "function"),
+            (lsp::SymbolKind::CLASS, "class", "type"),
+            (
+                lsp::SymbolKind::ENUM_MEMBER,
+                "enum_member",
+                "type.enum.variant",
+            ),
+            (lsp::SymbolKind::CONSTRUCTOR, "constructor", "constructor"),
+            (lsp::SymbolKind::TYPE_PARAMETER, "type_param", "type"),
+        ] {
+            let symbol: lsp::SymbolInformation = serde_json::from_value(serde_json::json!({
+                "name": "example", "kind": kind, "containerName": "parent",
+                "location": { "uri": "file:///tmp/symbol.rs", "range": {"start": {"line":0,"character":0}, "end": {"line":0,"character":1}} }
+            })).unwrap();
+            let item = SymbolInformationItem {
+                location: lsp_location_to_location(symbol.location.clone(), OffsetEncoding::Utf16)
+                    .unwrap(),
+                symbol,
+            };
+            for config in [
+                "",
+                "enable = true",
+                "enable = true\npicker = false",
+                "enable = true\ncolor = false",
+            ] {
+                let data = SymbolStyle {
+                    devicons: std::sync::Arc::new(toml::from_str(config).unwrap()),
+                    theme: theme.clone(),
+                };
+                for workspace in [false, true] {
+                    let columns = symbol_columns(&data, workspace);
+                    let cell = columns[0].format(&item, &data);
+                    let span = &cell.content.lines[0].0[0];
+                    if data.devicons.enable && data.devicons.picker {
+                        assert!(span
+                            .content
+                            .starts_with(data.devicons.kind(name, theme).glyph));
+                        if !data.devicons.color {
+                            assert_eq!(span.style, Style::default());
+                        }
+                    } else {
+                        assert_eq!(span.content, display_symbol_kind(kind));
+                    }
+                    let cell = columns[1].format(&item, &data);
+                    assert_eq!(cell.content.lines[0].0[0].content, "example");
+                    assert_eq!(
+                        cell.content.lines[0].0[0].style,
+                        ui::kind::scope_style(theme, scope)
+                    );
+                }
+            }
+        }
+    }
 }
