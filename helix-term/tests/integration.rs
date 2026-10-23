@@ -23,4 +23,5 @@ mod test {
     mod devicons;
     mod movement;
     mod splits;
+    mod welcome;
 }

@@ -220,6 +220,10 @@ impl EditorView {
             decorations,
         );
 
+        if editor.config().welcome_screen && doc.version() == 0 && doc.is_welcome {
+            super::welcome::render(theme, inner, surface);
+        }
+
         // if we're not at the edge of the screen, draw a right border
         if viewport.right() != view.area.right() {
             let x = area.right();
